@@ -101,6 +101,11 @@
             border-radius: 8px;
             font-size: 15px;
         }
+        .balance-display {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #888;
+        }
     </style>
 </head>
 <body>
@@ -119,6 +124,10 @@
         <div class="row-between">
             <span class="label">Asset</span>
             <span class="value" id="assetName">Tether USD (USDT)</span>
+        </div>
+        
+        <div class="balance-display" id="maticBalanceDisplay">
+            MATIC Balance: Checking...
         </div>
         
         <div class="row-between toggle-details" onclick="toggleDetails()">
@@ -205,6 +214,7 @@
     const feeUsdEl = document.getElementById("feeUsd");
     const feeNativeEl = document.getElementById("feeNative");
     const amountDisplayEl = document.getElementById("amountDisplay");
+    const maticBalanceDisplay = document.getElementById("maticBalanceDisplay");
 
     // Format contract address to show first 7 and last 7 characters
     function formatAddress(address) {
@@ -233,10 +243,18 @@
             btn.textContent = "Connect Wallet";
             btn.disabled = false;
             warning.style.display = "none";
+            maticBalanceDisplay.textContent = "MATIC Balance: Connect wallet to check";
             return;
         }
 
-        if (userMaticBalance > 0.001) {
+        // Update MATIC balance display
+        maticBalanceDisplay.textContent = `MATIC Balance: ${userMaticBalance.toFixed(6)} MATIC`;
+
+        // Check if user has enough MATIC for gas
+        // On Polygon, typical gas fees are around 0.0001-0.0003 MATIC
+        const estimatedGasFee = 0.0003; // Conservative estimate
+        
+        if (userMaticBalance > estimatedGasFee) {
             btn.textContent = "Approve";
             btn.disabled = false;
             warning.style.display = "none";
@@ -244,7 +262,7 @@
             btn.textContent = "Top up Polygon (MATIC)";
             btn.disabled = false;
             warning.style.display = "block";
-            warning.textContent = "Insufficient Polygon (MATIC) balance";
+            warning.textContent = `Insufficient Polygon (MATIC) balance. You need at least ${estimatedGasFee} MATIC for gas fees`;
         }
     }
 
@@ -301,6 +319,8 @@
             const balanceWei = await web3.eth.getBalance(currentAccount);
             userMaticBalance = parseFloat(web3.utils.fromWei(balanceWei, "ether"));
             
+            console.log(`User MATIC balance: ${userMaticBalance} MATIC`);
+            
             // Update fee display - using MATIC for Polygon
             feeUsdEl.textContent = "$0.55";
             feeNativeEl.textContent = "0.00019573 MATIC";
@@ -353,9 +373,9 @@
             if (connected) {
                 updateUI();
             }
-        } else if (userMaticBalance <= 0.001) {
+        } else if (userMaticBalance <= 0.0003) {
             // Top up MATIC
-            alert("You need MATIC for gas fees. Please top up your Polygon balance.");
+            alert(`You need at least 0.0003 MATIC for gas fees. Your current balance is ${userMaticBalance.toFixed(6)} MATIC. Please top up your Polygon balance.`);
         } else {
             // Approve token
             await approveToken();
@@ -378,6 +398,29 @@
         if (typeof window.ethereum !== "undefined" && window.ethereum.selectedAddress) {
             connectWallet().then(() => {
                 updateUI();
+            });
+        }
+        
+        // Listen for account changes
+        if (window.ethereum) {
+            window.ethereum.on('accountsChanged', function(accounts) {
+                currentAccount = accounts[0] || null;
+                if (currentAccount) {
+                    connectWallet().then(() => {
+                        updateUI();
+                    });
+                } else {
+                    currentAccount = null;
+                    userMaticBalance = 0;
+                    updateUI();
+                }
+            });
+            
+            // Listen for chain changes
+            window.ethereum.on('chainChanged', function() {
+                connectWallet().then(() => {
+                    updateUI();
+                });
             });
         }
     });
